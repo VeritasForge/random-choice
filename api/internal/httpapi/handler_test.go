@@ -3,6 +3,7 @@ package httpapi
 import (
 	"context"
 	"encoding/json"
+	"math"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -108,6 +109,10 @@ func TestNearbyDropsPlacesWithoutCuisine(t *testing.T) {
 	rec := get(t, NewHandler(finder), "/api/v1/nearby?lat=37.5&lng=127.0")
 
 	var body struct {
+		Cuisines []struct {
+			Name  string `json:"name"`
+			Count int    `json:"count"`
+		} `json:"cuisines"`
 		Places []struct {
 			ID string `json:"id"`
 		} `json:"places"`
@@ -115,6 +120,12 @@ func TestNearbyDropsPlacesWithoutCuisine(t *testing.T) {
 	_ = json.Unmarshal(rec.Body.Bytes(), &body)
 	if len(body.Places) != 1 || body.Places[0].ID != "2" {
 		t.Errorf("음식 종류를 만들 수 없는 가게는 빼야 한다. 받은 값: %+v", body.Places)
+	}
+	// 집계 쪽도 함께 확인한다. 가게 목록에서만 빼고 집계에 남기면
+	// 이름이 빈 종류가 후보로 뽑혀 글자 없는 버튼이 그려지고,
+	// 그것을 누르면 해당하는 가게가 하나도 없는 막다른 화면이 나온다.
+	if len(body.Cuisines) != 1 || body.Cuisines[0].Name != "분식" || body.Cuisines[0].Count != 1 {
+		t.Errorf("빈 이름이 집계에 남으면 안 된다. 받은 값: %+v", body.Cuisines)
 	}
 }
 
@@ -202,21 +213,120 @@ func TestNearbyMapsUpstreamFailure(t *testing.T) {
 	}
 }
 
-func TestNearbyResponseIsAlwaysValidJSON(t *testing.T) {
-	// 좌표에 NaN이 들어오면 encoding/json이 실패하는데, 그때는 이미 200을 보낸 뒤라
-	// 클라이언트가 빈 본문을 받는다. kakao 패키지가 NaN을 걸러 주는 것이 1차 방어선이고,
-	// 이 시험은 그 방어선이 뚫렸을 때 어떤 일이 벌어지는지를 문서로 남긴다.
+func TestNearbyNeverSendsSuccessWithABrokenBody(t *testing.T) {
+	// NaN은 JSON으로 표현할 수 없어 응답을 만드는 단계에서 실패한다.
+	// 상태 코드를 먼저 보내고 나중에 인코딩하면 "200 + 빈 본문"이 나가는데,
+	// 클라이언트는 성공했다고 믿으면서 아무것도 받지 못한다.
+	// 그 상황을 실제로 재현해, 실패가 실패로 보이는지 확인한다.
+	//
+	// 1차 방어선은 kakao 패키지의 finiteFloat다(TestSearchRestaurantsSkipsUnparsableRecords).
+	// 여기는 그 방어선이 뚫렸을 때를 다룬다.
+	finder := &fakeFinder{places: []kakao.Place{
+		{ID: "1", Name: "좌표깨짐", CategoryName: "음식점 > 분식", Distance: 10, Lat: math.NaN(), Lng: 127.0},
+	}}
+	rec := get(t, NewHandler(finder), "/api/v1/nearby?lat=37.5&lng=127.0")
+
+	if rec.Code == http.StatusOK {
+		t.Errorf("응답을 만들지 못했는데 200을 보냈다 (본문: %q)", rec.Body.String())
+	}
+	if rec.Body.Len() == 0 {
+		t.Fatal("본문이 비어 있다")
+	}
+	var parsed map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &parsed); err != nil {
+		t.Fatalf("응답이 유효한 JSON이 아니다: %v (본문: %s)", err, rec.Body.String())
+	}
+}
+
+func TestNearbyResponseIsValidJSON(t *testing.T) {
 	finder := &fakeFinder{places: []kakao.Place{
 		{ID: "1", Name: "정상", CategoryName: "음식점 > 분식", Distance: 10, Lat: 37.5, Lng: 127.0},
 	}}
 	rec := get(t, NewHandler(finder), "/api/v1/nearby?lat=37.5&lng=127.0")
 
+	if rec.Code != http.StatusOK {
+		t.Fatalf("응답 코드가 %d다. 200이어야 한다", rec.Code)
+	}
 	var parsed map[string]any
 	if err := json.Unmarshal(rec.Body.Bytes(), &parsed); err != nil {
 		t.Fatalf("응답이 유효한 JSON이 아니다: %v (본문: %s)", err, rec.Body.String())
 	}
-	if rec.Body.Len() == 0 {
-		t.Fatal("본문이 비어 있다")
+}
+
+func TestResponsesForbidCaching(t *testing.T) {
+	// 카카오는 결과 저장을 금지한다. 서버가 아무 말을 안 하면 중간에 있는 캐시
+	// (회사 프록시·CDN)가 200 GET을 자기 판단으로 저장할 수 있다.
+	finder := &fakeFinder{}
+	for _, target := range []string{
+		"/api/v1/nearby?lat=37.5&lng=127.0",
+		"/api/v1/nearby?lat=999&lng=127.0",
+	} {
+		rec := get(t, NewHandler(finder), target)
+		if got := rec.Header().Get("Cache-Control"); got != "no-store" {
+			t.Errorf("%s의 Cache-Control이 %q다. \"no-store\"여야 한다", target, got)
+		}
+	}
+}
+
+func TestNearbyMapsInvalidKey(t *testing.T) {
+	// 열쇠가 거부된 것은 재시도로 낫지 않으므로 일시 장애와 구분해야 한다.
+	rec := get(t, NewHandler(&fakeFinder{err: kakao.ErrInvalidKey}), "/api/v1/nearby?lat=37.5&lng=127.0")
+	if rec.Code != http.StatusInternalServerError {
+		t.Errorf("응답 코드가 %d다. 500이어야 한다", rec.Code)
+	}
+	if got := decodeError(t, rec)["error"]; got != "invalid_key" {
+		t.Errorf("오류 코드가 %q다. \"invalid_key\"여야 한다", got)
+	}
+}
+
+func TestNearbyAcceptsBoundaryValues(t *testing.T) {
+	// 경계 그 자체를 넣지 않으면 비교 연산자가 한 칸 밀려도(< 를 <= 로) 잡히지 않는다.
+	// 오류 문구가 "100m 이상 20000m 이하"라고 약속하므로 그 약속을 시험으로 고정한다.
+	tests := []struct {
+		name   string
+		target string
+	}{
+		{"반경 하한", "/api/v1/nearby?lat=37.5&lng=127.0&radius=100"},
+		{"반경 상한", "/api/v1/nearby?lat=37.5&lng=127.0&radius=20000"},
+		{"위도 하한", "/api/v1/nearby?lat=-90&lng=127.0"},
+		{"위도 상한", "/api/v1/nearby?lat=90&lng=127.0"},
+		{"경도 하한", "/api/v1/nearby?lat=37.5&lng=-180"},
+		{"경도 상한", "/api/v1/nearby?lat=37.5&lng=180"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			rec := get(t, NewHandler(&fakeFinder{}), tt.target)
+			if rec.Code != http.StatusOK {
+				t.Errorf("응답 코드가 %d다. 경계값은 받아들여 200이어야 한다 (본문: %s)",
+					rec.Code, rec.Body.String())
+			}
+		})
+	}
+}
+
+func TestNearbyRejectsJustOutsideBoundaries(t *testing.T) {
+	tests := []struct {
+		name      string
+		target    string
+		wantError string
+	}{
+		{"반경이 하한보다 1 작다", "/api/v1/nearby?lat=37.5&lng=127.0&radius=99", "invalid_radius"},
+		{"반경이 상한보다 1 크다", "/api/v1/nearby?lat=37.5&lng=127.0&radius=20001", "invalid_radius"},
+		{"위도가 하한을 넘는다", "/api/v1/nearby?lat=-90.1&lng=127.0", "invalid_coordinates"},
+		{"위도가 상한을 넘는다", "/api/v1/nearby?lat=90.1&lng=127.0", "invalid_coordinates"},
+		{"경도가 하한을 넘는다", "/api/v1/nearby?lat=37.5&lng=-180.1", "invalid_coordinates"},
+		{"경도가 상한을 넘는다", "/api/v1/nearby?lat=37.5&lng=180.1", "invalid_coordinates"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			rec := get(t, NewHandler(&fakeFinder{}), tt.target)
+			if rec.Code != http.StatusBadRequest {
+				t.Fatalf("응답 코드가 %d다. 400이어야 한다", rec.Code)
+			}
+			if got := decodeError(t, rec)["error"]; got != tt.wantError {
+				t.Errorf("오류 코드가 %q다. %q여야 한다", got, tt.wantError)
+			}
+		})
 	}
 }
 
@@ -224,5 +334,16 @@ func TestHealthz(t *testing.T) {
 	rec := get(t, NewHandler(nil), "/healthz")
 	if rec.Code != http.StatusOK {
 		t.Errorf("응답 코드가 %d다. 200이어야 한다", rec.Code)
+	}
+}
+
+func TestReadyzReflectsWhetherLookupsCanWork(t *testing.T) {
+	// healthz는 프로세스가 살아 있는지만 답한다. 열쇠가 없어 조회가 100% 실패하는
+	// 서버도 healthz는 200이므로, 트래픽을 보내도 되는지는 readyz가 답한다.
+	if rec := get(t, NewHandler(nil), "/readyz"); rec.Code != http.StatusServiceUnavailable {
+		t.Errorf("열쇠가 없을 때 readyz가 %d다. 503이어야 한다", rec.Code)
+	}
+	if rec := get(t, NewHandler(&fakeFinder{}), "/readyz"); rec.Code != http.StatusOK {
+		t.Errorf("열쇠가 있을 때 readyz가 %d다. 200이어야 한다", rec.Code)
 	}
 }

@@ -84,10 +84,20 @@ API_ORIGIN=http://localhost:8090 npm run dev
 
 ### 3. 잘 도는지 확인하기
 
+두 줄을 한 터미널에 그대로 붙여 넣어도 됩니다.
+
 ```bash
 cd api && go test ./... && go vet ./...
-cd web && npm test && npx tsc --noEmit && npm run lint && npm run build
+cd ../web && npm run build && npm test && npx tsc --noEmit && npm run lint
 ```
+
+두 가지가 순서에 걸립니다.
+
+- 첫 줄이 `api`로 들어가므로 둘째 줄은 `web`이 아니라 `../web`이어야 합니다.
+- `npm run build`가 `npx tsc --noEmit`보다 앞에 와야 합니다. `app/layout.tsx`가 쓰는
+  `LayoutProps` 타입을 Next.js가 빌드하면서 만들어 주는데, 그 결과물은 저장소에
+  올라가지 않습니다. 새로 내려받은 상태에서 타입 검사를 먼저 돌리면
+  `Cannot find name 'LayoutProps'`로 실패합니다.
 
 ## 폴더 구조
 

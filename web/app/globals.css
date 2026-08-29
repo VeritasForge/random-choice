@@ -19,8 +19,13 @@
   }
 }
 
+/*
+  font-family를 여기서 정하지 않는다. 정하면 layout.tsx가 불러온 Geist가
+  이 규칙에 덮여, 글꼴 파일만 내려받고 화면에는 쓰이지 않는다.
+  Tailwind가 --font-sans(위 @theme inline에서 Geist에 연결)로 본문 글꼴을 정한다.
+*/
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-sans), system-ui, sans-serif;
 }

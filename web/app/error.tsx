@@ -1,0 +1,35 @@
+"use client";
+
+import { useEffect } from "react";
+import Notice from "@/components/Notice";
+
+/**
+ * 화면을 그리는 도중 예외가 나면 Next.js가 이 파일을 대신 보여 준다.
+ * 이것이 없으면 사용자는 브라우저 기본 오류 화면만 보고 앱 전체가 죽는다 —
+ * 무슨 일이 났는지도, 되돌아갈 길도 없다.
+ *
+ * 이벤트 처리 중에 난 오류는 page.tsx의 try/catch가 맡는다.
+ * 여기는 그 그물에 걸리지 않는 렌더 경로 전용이다.
+ */
+export default function Error({
+  error,
+  reset,
+}: {
+  error: Error & { digest?: string };
+  reset: () => void;
+}) {
+  useEffect(() => {
+    // 배포 빌드는 화면에 원인을 남기지 않으므로 콘솔에라도 원본을 남긴다.
+    console.error("[render] 화면을 그리지 못했습니다", error);
+  }, [error]);
+
+  return (
+    <main className="mx-auto flex min-h-dvh w-full max-w-md flex-col items-center justify-center gap-8 p-6">
+      <Notice
+        title="화면을 보여 주지 못했어요"
+        description="잠시 후 다시 시도해 주세요. 문제가 계속되면 새로고침해 주세요."
+        actions={[{ label: "다시 시도", onClick: reset }]}
+      />
+    </main>
+  );
+}

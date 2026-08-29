@@ -12,21 +12,25 @@ import (
 
 // pageJSON은 카카오 응답 한 페이지를 흉내 낸다.
 // x는 경도, y는 위도이며 카카오는 이 값들을 문자열로 준다.
-func pageJSON(count int, isEnd bool) string {
+//
+// page를 식별자에 섞는 이유: 페이지마다 다른 가게가 오는 것이 실제 모습이다.
+// 예전에는 모든 페이지가 같은 식별자를 주었는데, 그러면 세 페이지를 합쳤을 때
+// 같은 가게 15곳이 45곳으로 세어지는 동작을 시험이 오히려 정답으로 고정하게 된다.
+func pageJSON(page, count int, isEnd bool) string {
 	docs := make([]string, 0, count)
 	for i := 0; i < count; i++ {
 		docs = append(docs, fmt.Sprintf(`{
-			"id": "%d",
-			"place_name": "가게%d",
+			"id": "p%d-%d",
+			"place_name": "가게%d-%d",
 			"category_name": "음식점 > 한식 > 육류,고기",
 			"phone": "02-000-0000",
 			"address_name": "서울 강남구 역삼동 1",
 			"road_address_name": "서울 강남구 테헤란로 %d",
-			"place_url": "http://place.map.kakao.com/%d",
+			"place_url": "http://place.map.kakao.com/p%d-%d",
 			"x": "127.02%02d",
 			"y": "37.49%02d",
 			"distance": "%d"
-		}`, i, i, i, i, i, i, i*10))
+		}`, page, i, page, i, i, page, i, i, i, i*10))
 	}
 	return fmt.Sprintf(`{"documents": [%s], "meta": {"is_end": %t}}`,
 		strings.Join(docs, ","), isEnd)
@@ -37,7 +41,7 @@ func TestSearchRestaurantsReadsAllThreePages(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		calls++
 		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprint(w, pageJSON(15, calls == 3))
+		fmt.Fprint(w, pageJSON(calls, 15, calls == 3))
 	}))
 	defer server.Close()
 
@@ -58,7 +62,7 @@ func TestSearchRestaurantsStopsWhenKakaoSaysItIsTheEnd(t *testing.T) {
 	var calls int
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		calls++
-		fmt.Fprint(w, pageJSON(3, true))
+		fmt.Fprint(w, pageJSON(1, 3, true))
 	}))
 	defer server.Close()
 
@@ -85,7 +89,7 @@ func TestSearchRestaurantsSendsCorrectRequest(t *testing.T) {
 		for key := range r.URL.Query() {
 			gotQuery[key] = r.URL.Query().Get(key)
 		}
-		fmt.Fprint(w, pageJSON(1, true))
+		fmt.Fprint(w, pageJSON(1, 1, true))
 	}))
 	defer server.Close()
 
@@ -247,7 +251,7 @@ func TestSearchRestaurantsStopsAtThreePagesEvenIfKakaoNeverEnds(t *testing.T) {
 	var calls int
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		calls++
-		fmt.Fprint(w, pageJSON(15, false))
+		fmt.Fprint(w, pageJSON(calls, 15, false))
 	}))
 	defer server.Close()
 
@@ -261,5 +265,157 @@ func TestSearchRestaurantsStopsAtThreePagesEvenIfKakaoNeverEnds(t *testing.T) {
 	}
 	if len(places) != 45 {
 		t.Errorf("%d곳을 받았다. 15 × 3 = 45곳이어야 한다", len(places))
+	}
+}
+
+func TestSearchRestaurantsAsksForEachPageInOrder(t *testing.T) {
+	// 페이지 번호를 실제로 올려 보내는지 확인한다. 번호를 1로 고정해도
+	// 호출 횟수와 결과 개수만 보는 시험은 전부 통과하므로, 쿼리를 직접 봐야 한다.
+	var pages []string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		pages = append(pages, r.URL.Query().Get("page"))
+		fmt.Fprint(w, pageJSON(len(pages), 15, len(pages) == 3))
+	}))
+	defer server.Close()
+
+	client := NewClientWithBaseURL("test-key", server.URL, server.Client())
+	if _, err := client.SearchRestaurants(context.Background(), 37.49, 127.02, 500); err != nil {
+		t.Fatalf("오류가 나면 안 된다: %v", err)
+	}
+	want := []string{"1", "2", "3"}
+	if strings.Join(pages, ",") != strings.Join(want, ",") {
+		t.Errorf("보낸 page 값이 %v다. %v여야 한다", pages, want)
+	}
+}
+
+func TestSearchRestaurantsGivesEveryPlaceItsOwnIdentity(t *testing.T) {
+	// 세 페이지를 합친 결과에 같은 가게가 두 번 들어 있으면
+	// 그 종류의 가게 수가 부풀어 추첨 확률이 뒤틀리고, 화면 목록에도 두 번 나온다.
+	var calls int
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		fmt.Fprint(w, pageJSON(calls, 15, calls == 3))
+	}))
+	defer server.Close()
+
+	client := NewClientWithBaseURL("test-key", server.URL, server.Client())
+	places, err := client.SearchRestaurants(context.Background(), 37.49, 127.02, 500)
+	if err != nil {
+		t.Fatalf("오류가 나면 안 된다: %v", err)
+	}
+	seen := make(map[string]struct{}, len(places))
+	for _, place := range places {
+		if _, duplicate := seen[place.ID]; duplicate {
+			t.Fatalf("식별자 %q가 두 번 나왔다", place.ID)
+		}
+		seen[place.ID] = struct{}{}
+	}
+	if len(seen) != 45 {
+		t.Errorf("서로 다른 가게가 %d곳이다. 45곳이어야 한다", len(seen))
+	}
+}
+
+func TestSearchRestaurantsDropsDuplicatesAcrossPages(t *testing.T) {
+	// 카카오가 페이지 경계에서 같은 가게를 다시 주는 경우.
+	var calls int
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		// 세 페이지가 모두 같은 가게 목록을 준다.
+		fmt.Fprint(w, pageJSON(1, 15, calls == 3))
+	}))
+	defer server.Close()
+
+	client := NewClientWithBaseURL("test-key", server.URL, server.Client())
+	places, err := client.SearchRestaurants(context.Background(), 37.49, 127.02, 500)
+	if err != nil {
+		t.Fatalf("오류가 나면 안 된다: %v", err)
+	}
+	if len(places) != 15 {
+		t.Errorf("%d곳을 받았다. 같은 가게는 한 번만 세어 15곳이어야 한다", len(places))
+	}
+}
+
+func TestSearchRestaurantsDiscardsEarlierPagesWhenALaterPageFails(t *testing.T) {
+	// client.go의 주석이 약속하는 규칙: 페이지 하나가 실패하면 그때까지 모은 것도 버린다.
+	// 일부만 돌려주면 음식 종류 분포가 조용히 치우친 채 정상 응답인 척 화면에 올라간다.
+	var calls int
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		if calls == 1 {
+			fmt.Fprint(w, pageJSON(1, 15, false))
+			return
+		}
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer server.Close()
+
+	client := NewClientWithBaseURL("test-key", server.URL, server.Client())
+	places, err := client.SearchRestaurants(context.Background(), 37.49, 127.02, 500)
+	if !errors.Is(err, ErrUpstream) {
+		t.Fatalf("상위 서비스 오류여야 한다. 받은 오류: %v", err)
+	}
+	if len(places) != 0 {
+		t.Errorf("%d곳을 돌려줬다. 실패했으면 한 곳도 돌려주면 안 된다", len(places))
+	}
+}
+
+func TestSearchRestaurantsReportsInvalidKey(t *testing.T) {
+	// 열쇠가 거부된 것은 재시도로 낫지 않는다. 일시 장애와 같은 통에 담으면
+	// 화면이 "잠시 후 다시 시도"라고 안내해 사용자가 성공하지 않을 재시도를 반복한다.
+	for _, status := range []int{http.StatusUnauthorized, http.StatusForbidden} {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(status)
+		}))
+		client := NewClientWithBaseURL("test-key", server.URL, server.Client())
+		_, err := client.SearchRestaurants(context.Background(), 37.49, 127.02, 500)
+		if !errors.Is(err, ErrInvalidKey) {
+			t.Errorf("%d는 열쇠 거부 오류여야 한다. 받은 오류: %v", status, err)
+		}
+		if errors.Is(err, ErrUpstream) {
+			t.Errorf("%d를 일시 장애로 다루면 안 된다", status)
+		}
+		server.Close()
+	}
+}
+
+func TestSearchRestaurantsSkipsNegativeDistance(t *testing.T) {
+	// 음수 거리는 있을 수 없는 값이다. 통과시키면 거리순 정렬에서 맨 앞에 서서
+	// "가장 가까운 집"으로 표시된다.
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, `{"documents": [
+			{"id": "1", "place_name": "음수거리", "category_name": "음식점 > 분식",
+			 "road_address_name": "주소", "place_url": "", "x": "127.0", "y": "37.5", "distance": "-1"},
+			{"id": "2", "place_name": "멀쩡한집", "category_name": "음식점 > 분식",
+			 "road_address_name": "주소", "place_url": "", "x": "127.0", "y": "37.5", "distance": "10"}
+		], "meta": {"is_end": true}}`)
+	}))
+	defer server.Close()
+
+	client := NewClientWithBaseURL("test-key", server.URL, server.Client())
+	places, err := client.SearchRestaurants(context.Background(), 37.49, 127.02, 500)
+	if err != nil {
+		t.Fatalf("한 건이 깨졌다고 조회 전체가 실패하면 안 된다: %v", err)
+	}
+	if len(places) != 1 || places[0].ID != "2" {
+		t.Fatalf("멀쩡한 한 곳만 남아야 한다. 받은 값: %+v", places)
+	}
+}
+
+func TestSearchRestaurantsDoesNotLeakCoordinatesInError(t *testing.T) {
+	// 통신 실패 오류에는 요청 주소가 통째로 들어가고, 그 주소의 x·y가 곧 사용자 좌표다.
+	// 그 오류 문자열이 그대로 로그로 흘러가므로 좌표가 남지 않아야 한다.
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
+	baseURL := server.URL
+	server.Close() // 닫아 두어 연결 실패를 만든다.
+
+	client := NewClientWithBaseURL("test-key", baseURL, &http.Client{})
+	_, err := client.SearchRestaurants(context.Background(), 37.4979, 127.0276, 500)
+	if err == nil {
+		t.Fatal("연결에 실패했어야 한다")
+	}
+	for _, secret := range []string{"37.4979", "127.0276", "test-key"} {
+		if strings.Contains(err.Error(), secret) {
+			t.Errorf("오류 문자열에 %q가 들어 있다: %v", secret, err)
+		}
 	}
 }

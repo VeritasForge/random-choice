@@ -6,18 +6,22 @@ import Notice from "@/components/Notice";
 import ResultScreen from "@/components/ResultScreen";
 import StartScreen from "@/components/StartScreen";
 import { fetchNearby, NearbyError, type NearbyResult } from "@/lib/api";
-import { getCurrentPosition } from "@/lib/geo";
+import { errorNotice } from "@/lib/errors";
+import { getCurrentPosition, GeoError } from "@/lib/geo";
 import { pickAvoiding, pickDistinct, pickOne } from "@/lib/pick";
+import { DEFAULT_RADIUS, widerThan } from "@/lib/radius";
 
 const CANDIDATE_COUNT = 4;
-const DEFAULT_RADIUS = 500;
-const WIDER_RADII = [1000, 2000];
 
 /**
  * 지금 무엇을 보여줄지를 하나의 값으로 관리한다.
  * 결과와 후보를 이 값 안에 함께 담아 두어, 화면 상태와 데이터가 어긋나지 않게 한다.
  * 여기 담긴 목록은 새로고침하면 사라진다. 어디에도 저장하지 않는다 —
  * 카카오가 결과 저장을 금지하기 때문이다.
+ *
+ * empty와 error가 radius를 함께 들고 다니는 이유: 다음 행동이 그 값에 달려 있다.
+ * empty는 "방금 실패한 반경보다 넓은 것"만 제안해야 하고,
+ * error의 다시 시도는 사용자가 넓혀 둔 반경을 그대로 이어받아야 한다.
  */
 type View =
   | { kind: "start" }
@@ -25,52 +29,13 @@ type View =
   | { kind: "candidates"; result: NearbyResult; candidates: string[] }
   | { kind: "result"; result: NearbyResult; cuisine: string }
   | { kind: "empty"; radius: number }
-  | { kind: "error"; code: string; message: string };
-
-const ERROR_TEXT: Record<string, { title: string; description: string }> = {
-  permission_denied: {
-    title: "위치를 알아야 주변 음식점을 찾을 수 있어요",
-    description:
-      "브라우저 주소창 왼쪽의 자물쇠 아이콘을 눌러 위치 권한을 허용한 뒤, 다시 시도해 주세요.",
-  },
-  position_unavailable: {
-    title: "지금 위치를 확인하지 못했어요",
-    description: "실내이거나 신호가 약할 때 생길 수 있습니다. 잠시 후 다시 시도해 주세요.",
-  },
-  unsupported: {
-    title: "이 브라우저는 위치 기능을 지원하지 않아요",
-    description: "크롬이나 사파리 같은 최신 브라우저에서 다시 열어 주세요.",
-  },
-  not_configured: {
-    title: "서버 준비가 아직 안 됐어요",
-    description: "장소 조회에 필요한 열쇠가 서버에 설정되지 않았습니다.",
-  },
-  quota_exceeded: {
-    title: "오늘 조회 한도를 다 썼어요",
-    description: "내일 다시 이용해 주세요.",
-  },
-  upstream_error: {
-    title: "장소 정보를 가져오지 못했어요",
-    description: "잠시 후 다시 시도해 주세요.",
-  },
-  network_error: {
-    title: "서버에 연결하지 못했어요",
-    description: "인터넷 연결을 확인한 뒤 다시 시도해 주세요.",
-  },
-  malformed_response: {
-    title: "서버 응답을 읽지 못했어요",
-    description: "잠시 후 다시 시도해 주세요.",
-  },
-};
-
-const FALLBACK_ERROR = {
-  title: "문제가 생겼어요",
-  description: "잠시 후 다시 시도해 주세요.",
-};
+  | { kind: "error"; code: string; message: string; radius: number };
 
 /**
  * 화면 단위 이름. start와 loading은 같은 화면의 두 상태이므로 하나로 본다 —
- * 로딩이 시작될 때 포커스를 옮기면 방금 누른 버튼에서 포커스를 빼앗게 된다.
+ * 시작 화면에서 로딩이 시작될 때 방금 누른 버튼에서 포커스를 빼앗지 않기 위한 것이다.
+ * 빈 결과·오류 화면에서 다시 시도를 누를 때는 화면 이름이 start로 바뀌므로
+ * 포커스가 main으로 옮겨 간다 — 그쪽은 이 규칙의 적용 대상이 아니다.
  */
 function screenNameOf(view: View): string {
   return view.kind === "loading" ? "start" : view.kind;
@@ -98,7 +63,10 @@ export default function Home() {
     try {
       const coords = await getCurrentPosition();
       const result = await fetchNearby(coords.lat, coords.lng, radius);
-      const names = result.cuisines.map((cuisine) => cuisine.name);
+      // 서버는 종류 이름을 유일하게 만들어 주지만, 그 성질은 JSON을 건너오면서
+      // 타입에서 사라진다. 여기서 한 번 좁혀 두면 이후 추첨과 React key가
+      // 모두 유일성 위에서 돈다.
+      const names = [...new Set(result.cuisines.map((cuisine) => cuisine.name))];
       if (names.length === 0) {
         setView({ kind: "empty", radius });
         return;
@@ -109,20 +77,25 @@ export default function Home() {
         candidates: pickDistinct(names, CANDIDATE_COUNT, Math.random),
       });
     } catch (error) {
-      // 서버가 준 오류는 코드를 그대로 쓰고,
-      // 위치 확인 실패는 Error의 message에 이유가 담겨 온다.
+      // 오류의 출처가 셋이고, 각각 코드를 담는 방식이 다르다.
+      // 어느 쪽도 아닌 오류는 우리가 예상하지 못한 것이므로, 원본을 콘솔에 남긴다 —
+      // 남기지 않으면 사용자에게는 일반 안내만 뜨고 개발자에게는 단서가 하나도 없다.
       if (error instanceof NearbyError) {
-        setView({ kind: "error", code: error.code, message: error.message });
+        setView({ kind: "error", code: error.code, message: error.message, radius });
         return;
       }
-      const code = error instanceof Error ? error.message : "position_unavailable";
-      setView({ kind: "error", code, message: "" });
+      if (error instanceof GeoError) {
+        setView({ kind: "error", code: error.code, message: "", radius });
+        return;
+      }
+      console.error("[start] 예상하지 못한 오류", error);
+      setView({ kind: "error", code: "unexpected", message: "", radius });
     }
   }
 
   function reshuffle() {
     if (view.kind !== "candidates") return;
-    const names = view.result.cuisines.map((cuisine) => cuisine.name);
+    const names = [...new Set(view.result.cuisines.map((cuisine) => cuisine.name))];
     setView({
       ...view,
       candidates: pickAvoiding(names, CANDIDATE_COUNT, view.candidates, Math.random),
@@ -137,8 +110,19 @@ export default function Home() {
   function decideForMe() {
     if (view.kind !== "candidates") return;
     const chosen = pickOne(view.candidates, Math.random);
-    if (chosen) choose(chosen);
+    if (chosen === undefined) {
+      // 후보 화면은 종류가 하나 이상일 때만 뜨므로 여기 닿으면 안 된다.
+      // 닿았다면 버튼이 조용히 아무 일도 안 한 것처럼 보이므로 흔적을 남긴다.
+      console.error("[decideForMe] 후보가 비어 있습니다", view.candidates);
+      return;
+    }
+    choose(chosen);
   }
+
+  // 이미 실패한 반경 이하는 제안하지 않는다(까닭은 lib/radius.ts에 적어 두었다).
+  const widerRadii = view.kind === "empty" ? widerThan(view.radius) : [];
+
+  const notice = view.kind === "error" ? errorNotice(view.code, view.message) : null;
 
   return (
     <main
@@ -173,19 +157,27 @@ export default function Home() {
       {view.kind === "empty" && (
         <Notice
           title={`반경 ${view.radius}m 안에 음식점이 없어요`}
-          description="조금 더 넓게 찾아볼까요?"
-          actions={WIDER_RADII.map((radius) => ({
-            label: `${radius / 1000}km로 넓히기`,
-            onClick: () => start(radius),
-          }))}
+          description={
+            widerRadii.length > 0
+              ? "조금 더 넓게 찾아볼까요?"
+              : "더 넓혀 봐도 찾지 못했어요. 다른 곳에서 다시 시도해 주세요."
+          }
+          actions={
+            widerRadii.length > 0
+              ? widerRadii.map((radius) => ({
+                  label: `${radius / 1000}km로 넓히기`,
+                  onClick: () => start(radius),
+                }))
+              : [{ label: "처음부터 다시", onClick: () => setView({ kind: "start" }) }]
+          }
         />
       )}
 
-      {view.kind === "error" && (
+      {view.kind === "error" && notice && (
         <Notice
-          title={(ERROR_TEXT[view.code] ?? FALLBACK_ERROR).title}
-          description={view.message || (ERROR_TEXT[view.code] ?? FALLBACK_ERROR).description}
-          actions={[{ label: "다시 시도", onClick: () => start(DEFAULT_RADIUS) }]}
+          title={notice.title}
+          description={notice.description}
+          actions={[{ label: "다시 시도", onClick: () => start(view.radius) }]}
         />
       )}
     </main>
