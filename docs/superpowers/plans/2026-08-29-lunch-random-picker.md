@@ -854,6 +854,10 @@ func TestNearbyRejectsBadInput(t *testing.T) {
 		{"위도가 범위를 벗어난다", "/api/v1/nearby?lat=999&lng=127.0", http.StatusBadRequest, "invalid_coordinates"},
 		{"경도가 범위를 벗어난다", "/api/v1/nearby?lat=37.5&lng=999", http.StatusBadRequest, "invalid_coordinates"},
 		{"위도가 숫자가 아니다", "/api/v1/nearby?lat=서울&lng=127.0", http.StatusBadRequest, "invalid_coordinates"},
+		{"위도가 NaN이다", "/api/v1/nearby?lat=nan&lng=127.0", http.StatusBadRequest, "invalid_coordinates"},
+		{"경도가 NaN이다", "/api/v1/nearby?lat=37.5&lng=NaN", http.StatusBadRequest, "invalid_coordinates"},
+		{"위도가 무한대다", "/api/v1/nearby?lat=inf&lng=127.0", http.StatusBadRequest, "invalid_coordinates"},
+		{"경도가 음의 무한대다", "/api/v1/nearby?lat=37.5&lng=-Inf", http.StatusBadRequest, "invalid_coordinates"},
 		{"반경이 너무 작다", "/api/v1/nearby?lat=37.5&lng=127.0&radius=10", http.StatusBadRequest, "invalid_radius"},
 		{"반경이 너무 크다", "/api/v1/nearby?lat=37.5&lng=127.0&radius=30000", http.StatusBadRequest, "invalid_radius"},
 		{"반경이 숫자가 아니다", "/api/v1/nearby?lat=37.5&lng=127.0&radius=넓게", http.StatusBadRequest, "invalid_radius"},
@@ -878,6 +882,18 @@ func TestNearbyWithoutFinderSaysNotConfigured(t *testing.T) {
 	}
 	if got := decodeError(t, rec)["error"]; got != "not_configured" {
 		t.Errorf("오류 코드가 %q다. \"not_configured\"여야 한다", got)
+	}
+}
+
+func TestNearbyRejectsBadInputEvenWithoutFinder(t *testing.T) {
+	// 잘못된 요청은 호출자의 잘못이므로, 서버에 열쇠가 있든 없든 400으로 답해야 한다.
+	// 이 시험은 검사 순서를 고정한다 — nil 검사가 앞으로 오면 여기서 500이 나와 실패한다.
+	rec := get(t, NewHandler(nil), "/api/v1/nearby?lat=999&lng=127.0")
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("응답 코드가 %d다. 400이어야 한다", rec.Code)
+	}
+	if got := decodeError(t, rec)["error"]; got != "invalid_coordinates" {
+		t.Errorf("오류 코드가 %q다. \"invalid_coordinates\"여야 한다", got)
 	}
 }
 
@@ -931,6 +947,7 @@ import (
 	"encoding/json"
 	"errors"
 	"log/slog"
+	"math"
 	"net/http"
 	"sort"
 	"strconv"
@@ -994,12 +1011,11 @@ func NewHandler(finder PlaceFinder) http.Handler {
 }
 
 func handleNearby(w http.ResponseWriter, r *http.Request, finder PlaceFinder) {
-	if finder == nil {
-		writeError(w, http.StatusInternalServerError, "not_configured",
-			"서버에 카카오 열쇠가 설정되지 않았습니다.")
-		return
-	}
-
+	// 요청 값 검사를 먼저 한다. 잘못된 요청은 서버에 열쇠가 있든 없든
+	// 호출자의 잘못이므로 400으로 답해야 한다. 열쇠가 없다는 이유로 500을
+	// 돌려주면 책임을 잘못 돌리게 되고, 설계 문서 12절의 완료 조건 두 개
+	// (열쇠 없이 not_configured 확인, 열쇠 없이 invalid_coordinates 확인)가
+	// 동시에 성립하지 못한다.
 	lat, lng, ok := parseCoordinates(r)
 	if !ok {
 		writeError(w, http.StatusBadRequest, "invalid_coordinates",
@@ -1011,6 +1027,12 @@ func handleNearby(w http.ResponseWriter, r *http.Request, finder PlaceFinder) {
 	if !ok {
 		writeError(w, http.StatusBadRequest, "invalid_radius",
 			"반경은 100m 이상 20000m 이하여야 합니다.")
+		return
+	}
+
+	if finder == nil {
+		writeError(w, http.StatusInternalServerError, "not_configured",
+			"서버에 카카오 열쇠가 설정되지 않았습니다.")
 		return
 	}
 
@@ -1031,14 +1053,17 @@ func handleNearby(w http.ResponseWriter, r *http.Request, finder PlaceFinder) {
 }
 
 // parseCoordinates는 위도·경도를 읽는다. 하나라도 올바르지 않으면 false를 돌려준다.
+// NaN을 따로 걸러내는 이유: strconv.ParseFloat는 "nan"을 오류 없이 받아들이는데,
+// NaN은 어떤 비교에서도 false라서 범위 검사(-90..90)를 그냥 통과해 버린다.
+// 반대로 "inf"는 90보다 크다고 판정되어 범위 검사에 이미 걸리므로 따로 볼 필요가 없다.
 func parseCoordinates(r *http.Request) (float64, float64, bool) {
 	query := r.URL.Query()
 	lat, err := strconv.ParseFloat(query.Get("lat"), 64)
-	if err != nil || lat < -90 || lat > 90 {
+	if err != nil || math.IsNaN(lat) || lat < -90 || lat > 90 {
 		return 0, 0, false
 	}
 	lng, err := strconv.ParseFloat(query.Get("lng"), 64)
-	if err != nil || lng < -180 || lng > 180 {
+	if err != nil || math.IsNaN(lng) || lng < -180 || lng > 180 {
 		return 0, 0, false
 	}
 	return lat, lng, true
@@ -1174,6 +1199,9 @@ curl -s -w "\n%{http_code}\n" "http://localhost:8080/api/v1/nearby?lat=37.5&lng=
 curl -s -w "\n%{http_code}\n" "http://localhost:8080/api/v1/nearby?lat=999&lng=127.0"
 pkill -f /tmp/rc-server
 ```
+
+포트 8080이 다른 프로그램에 쓰이고 있으면 `PORT=8090 /tmp/rc-server` 처럼 바꿔 띄우고
+curl 주소의 포트도 함께 바꾼다. (이 기기에서는 실제로 8080이 점유되어 있었다)
 
 기대:
 - `/healthz` → `200`
