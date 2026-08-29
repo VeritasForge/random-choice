@@ -1226,7 +1226,7 @@ Next.js 프로젝트를 만들고, 무작위 추첨 규칙을 먼저 순수 함�
 **Files:**
 - Create: `web/` 전체 (도구가 생성)
 - Modify: `web/next.config.ts`, `web/package.json`
-- Create: `web/vitest.config.ts`
+- Create: `web/vitest.config.mts`
 - Create: `web/lib/pick.ts`
 - Test: `web/lib/pick.test.ts`
 
@@ -1253,7 +1253,10 @@ rm -rf web/.git web/CLAUDE.md web/AGENTS.md
 cd web && npm install --save-dev vitest@^4 && cd ..
 ```
 
-`web/vitest.config.ts` 생성:
+`web/vitest.config.mts` 생성 (확장자가 `.ts`가 아니라 `.mts`인 이유: `package.json`에
+`"type": "module"`이 없어 Node가 `.ts` 설정 파일을 CommonJS로 읽는데 내용은 ESM이라
+실행할 때마다 경고가 뜬다. `.mts`는 확장자만으로 ESM임이 확정되고, Next가 만든
+`tsconfig.json`의 `include`에 이미 `**/*.mts`가 들어 있어 타입 검사도 그대로 걸린다):
 
 ```ts
 import { defineConfig } from "vitest/config";
