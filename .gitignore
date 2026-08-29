@@ -1,0 +1,17 @@
+# 비밀 값
+.env
+.env.local
+*.env
+
+# Node / Next.js
+node_modules/
+.next/
+out/
+npm-debug.log*
+
+# Go
+/api/bin/
+*.test
+
+# OS
+.DS_Store
