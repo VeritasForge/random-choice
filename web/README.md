@@ -40,6 +40,6 @@ API_ORIGIN=http://localhost:8090 npm run dev
 | `lib/radius.ts` | 결과가 없을 때 넓힐 반경 고르기 |
 
 시험은 `lib/` 아래 순수 함수와 통신 계층을 덮습니다. 화면 조각(`components/`, `app/`)에는
-자동 시험이 없고 그 까닭은 저장소 루트의 설계 문서 14절에 적혀 있습니다.
+자동 시험이 없고, 그 까닭은 `docs/superpowers/specs/2026-08-29-lunch-random-picker-design.md`의 14절에 적혀 있습니다.
 `vitest.config.mts`의 `include`는 `{lib,app,components}`까지 열려 있으므로,
 화면 시험을 추가하면 조용히 무시되지는 않습니다(다만 `jsdom`이 없어 환경 부족으로 실패합니다).

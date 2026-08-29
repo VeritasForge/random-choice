@@ -54,16 +54,22 @@ describe("errorNotice", () => {
     }
   });
 
-  it("재시도가 소용없는 오류의 안내는 화면 밖에서 할 일만 가리킨다", () => {
+  it("재시도가 소용없는 오류의 안내에 흔한 화면 안 행동이 없다", () => {
     // retryable이 false면 화면에 버튼이 하나도 없다. 그런데 안내 문구가
     // "처음부터 다시"처럼 화면 안 행동을 지시하면, 그 행동을 할 버튼이 없어
     // 안내 자체가 막다른 길이 된다.
-    const inPageActions = ["처음부터 다시", "다시 시도", "다시 뽑기", "넓히기"];
+    //
+    // 이 대조는 아래 어구가 글자 그대로 들어 있는지만 본다. 활용형("넓혀 보세요")까지는
+    // 잡지 못하므로 규칙 전체를 보장하지는 않는다 — 문구를 새로 쓸 때는 사람이 함께 봐야 한다.
+    // "버튼"과 "재시도"를 넣어 둔 이유: 재시도 불가 오류의 안내에 그 두 낱말이 나오면
+    // 그 자체로 없는 버튼을 가리키는 것이라, 다른 표현으로 우회하는 경우도 상당수 걸린다.
+    const inPageActions = ["처음부터 다시", "다시 시도", "다시 뽑기", "넓히기", "버튼", "재시도"];
     for (const code of KNOWN_ERROR_CODES) {
       const notice = errorNotice(code);
       if (notice.retryable) continue;
       for (const phrase of inPageActions) {
-        expect(
+        // soft를 쓰면 첫 위반에서 멈추지 않아, 어긋난 문구를 한 번에 다 볼 수 있다.
+        expect.soft(
           notice.description.includes(phrase),
           `${code}의 안내가 화면 안 행동("${phrase}")을 지시하는데 그 버튼이 없다`,
         ).toBe(false);
@@ -72,8 +78,8 @@ describe("errorNotice", () => {
   });
 
   it("다시 시도해도 소용없는 오류는 재시도를 권하지 않는다", () => {
-    // 이 표시가 뒤집히면 화면은 "다시 시도해도 같은 결과가 나옵니다"라고 말하면서
-    // 다시 시도 버튼만 보여 주는 막다른 길이 된다.
+    // 이 표시가 뒤집히면 화면은 "관리자에게 알려 주세요"처럼 화면 밖 행동을 안내하면서
+    // 정작 다시 시도 버튼을 보여 주는 막다른 길이 된다.
     for (const code of ["not_configured", "invalid_key", "quota_exceeded", "invalid_radius"]) {
       expect(errorNotice(code).retryable, `${code}는 재시도가 소용없다`).toBe(false);
     }

@@ -47,6 +47,17 @@ export class NearbyError extends Error {
  */
 export const REQUEST_TIMEOUT_MS = 20_000;
 
+/**
+ * 원소 검사의 규칙은 하나다 — **타입이 약속하는 항목은 전부 확인한다.**
+ *
+ * "지금 화면이 그리는 것만 확인한다"로 좁히지 않는 이유: 그 기준은 화면이 한 줄
+ * 늘어나는 순간 낡는다. 그때는 계약이 깨진 자리가 아니라 새로 그리는 자리에서 터지고,
+ * 원인과 증상이 떨어져 진단이 어려워진다 — 이 파일이 막으려는 바로 그 모양이다.
+ * 서버는 모든 항목을 언제나 채워 보내므로(placeDTO·cuisineDTO에 omitempty가 없다)
+ * 전부 확인해도 정상 응답이 거부되지 않는다.
+ *
+ * 값의 내용까지 요구하는 곳은 두 군데뿐이고, 각각 비면 화면이 조용히 망가진다.
+ */
 function isCuisine(value: unknown): value is Cuisine {
   if (typeof value !== "object" || value === null) {
     return false;
@@ -57,10 +68,6 @@ function isCuisine(value: unknown): value is Cuisine {
     // 빈 이름은 계약 위반이고, 그대로 통과시키면 글자 없는 후보 버튼이 그려진다.
     typeof candidate.name === "string" &&
     candidate.name.length > 0 &&
-    // count는 지금 어느 화면도 그리지 않지만 타입이 number를 약속한다.
-    // 검사하지 않으면 나중에 "한식 12곳" 같은 표시를 붙이는 순간, 계약이 깨진 자리가
-    // 아니라 그 표시를 그리는 자리에서 터진다 — 이 파일이 막으려는 바로 그 모양이다.
-    typeof candidate.count === "number" &&
     Number.isFinite(candidate.count)
   );
 }
@@ -77,16 +84,13 @@ function isPlace(value: unknown): value is Place {
     // 제목만 뜨고 목록이 텅 빈 막다른 화면이 된다.
     typeof candidate.cuisine === "string" &&
     candidate.cuisine.length > 0 &&
-    // 아래 넷은 결과 화면이 그대로 그리는 값이다. 빠지면 이름 없는 줄과
-    // 단위만 남은 거리("m")가 오류 없이 표시된다
-    // (React는 undefined 자식을 아무것도 그리지 않는다).
-    // lat·lng·phone은 어느 화면도 그리지 않으므로 검사하지 않는다 —
-    // 지도 표시를 붙이는 날 lat·lng를 여기 함께 더해야 한다.
     typeof candidate.name === "string" &&
     typeof candidate.roadAddress === "string" &&
     typeof candidate.placeUrl === "string" &&
-    typeof candidate.distance === "number" &&
-    Number.isFinite(candidate.distance)
+    typeof candidate.phone === "string" &&
+    Number.isFinite(candidate.distance) &&
+    Number.isFinite(candidate.lat) &&
+    Number.isFinite(candidate.lng)
   );
 }
 

@@ -269,6 +269,9 @@ describe("응답 원소 검사 — 항목 하나씩", () => {
     "거리가 숫자가 아니다": { distance: "100" },
     "종류가 빈 문자열이다": { cuisine: "" },
     "식별자가 숫자다": { id: 1 },
+    "전화번호가 없다": { phone: undefined },
+    "위도가 없다": { lat: undefined },
+    "경도가 숫자가 아니다": { lng: "127.0" },
   };
 
   const cuisineCases: Record<string, Record<string, unknown>> = {
@@ -299,6 +302,23 @@ describe("응답 원소 검사 — 항목 하나씩", () => {
       });
     });
   }
+
+  it("종류의 개수가 무한대여도 거른다", async () => {
+    // JSON 숫자 1e999는 JSON.parse에서 Infinity가 되므로 실제 응답으로 닿을 수 있다.
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () =>
+          new Response(
+            '{"cuisines":[{"name":"분식","count":1e999}],"places":[{"id":"1","name":"김밥집","cuisine":"분식","distance":100,"roadAddress":"주소","phone":"","placeUrl":"http://x","lat":37.5,"lng":127.0}]}',
+            { status: 200, headers: { "Content-Type": "application/json" } },
+          ),
+      ),
+    );
+    await expect(fetchNearby(37.5, 127.0, 500)).rejects.toMatchObject({
+      code: "malformed_response",
+    });
+  });
 
   it("거리가 무한대여도 거른다", async () => {
     // JSON.stringify는 Infinity를 null로 바꾸므로 원문 응답으로 보낸다.
