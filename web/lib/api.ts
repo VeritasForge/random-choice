@@ -39,7 +39,7 @@ export class NearbyError extends Error {
 /**
  * 요청 한 건 전체를 포기하는 시간. 헤더가 아니라 본문을 다 읽을 때까지가 대상이다.
  *
- * 서버는 카카오 조회 전체를 12초로 자른다(api/internal/kakao/client.go의 searchTimeout).
+ * 서버는 카카오 조회 전체를 12초로 자른다(api/internal/kakao/client.go의 DefaultSearchTimeout).
  * 그보다 넉넉히 잡되 무한정 기다리지는 않는다 — 기다리기만 하면 화면은
  * "주변을 살펴보는 중…"에 갇히고, 그 화면의 버튼은 로딩 중 눌리지 않으므로
  * 사용자는 새로고침 말고는 빠져나올 방법이 없다.
@@ -48,7 +48,13 @@ export class NearbyError extends Error {
 export const REQUEST_TIMEOUT_MS = 20_000;
 
 function isCuisine(value: unknown): value is Cuisine {
-  return typeof value === "object" && value !== null && typeof (value as Cuisine).name === "string";
+  if (typeof value !== "object" || value === null) {
+    return false;
+  }
+  const candidate = value as Cuisine;
+  // 이름이 빈 문자열이어도 안 된다. 서버는 종류를 만들지 못한 가게를 아예 빼므로
+  // 빈 이름은 계약 위반이고, 그대로 통과시키면 글자 없는 후보 버튼이 그려진다.
+  return typeof candidate.name === "string" && candidate.name.length > 0;
 }
 
 function isPlace(value: unknown): value is Place {
@@ -56,7 +62,21 @@ function isPlace(value: unknown): value is Place {
     return false;
   }
   const candidate = value as Place;
-  return typeof candidate.id === "string" && typeof candidate.cuisine === "string";
+  return (
+    // id는 빌 수 있다. 조회기가 식별자 없는 가게를 일부러 살려 두기 때문이다.
+    typeof candidate.id === "string" &&
+    // cuisine은 빌 수 없다. 비면 결과 화면의 종류 필터에 아무것도 걸리지 않아
+    // 제목만 뜨고 목록이 텅 빈 막다른 화면이 된다.
+    typeof candidate.cuisine === "string" &&
+    candidate.cuisine.length > 0 &&
+    // 아래 넷은 결과 화면이 그대로 그리는 값이다. 빠지면 이름 없는 줄과
+    // "undefinedm"이 오류 없이 표시된다.
+    typeof candidate.name === "string" &&
+    typeof candidate.roadAddress === "string" &&
+    typeof candidate.placeUrl === "string" &&
+    typeof candidate.distance === "number" &&
+    Number.isFinite(candidate.distance)
+  );
 }
 
 /**
@@ -108,11 +128,22 @@ export async function fetchNearby(
     }
 
     if (!response.ok) {
-      const body: unknown = await response.json().catch(() => null);
-      if (body === null) {
+      let body: unknown = null;
+      try {
+        body = await response.json();
+      } catch (cause) {
+        // 오류 본문을 읽는 도중에도 상한에 걸릴 수 있다. 그것까지 "알 수 없는 오류"로
+        // 뭉뚱그리면 사용자는 기다리다 실패했다는 사실을 안내받지 못한다.
+        if (controller.signal.aborted) {
+          throw new NearbyError(
+            "timeout",
+            "서버가 제때 응답하지 않았습니다.",
+            response.status,
+          );
+        }
         // 서버가 우리 오류 형식이 아닌 것을 돌려줬다. 프록시가 목적지에 못 닿았을 때
         // 흔한 모습이라, 상태 코드만이라도 남겨 두어야 나중에 원인을 좁힐 수 있다.
-        console.error("[fetchNearby] 오류 본문을 해석하지 못했습니다", response.status);
+        console.error("[fetchNearby] 오류 본문을 해석하지 못했습니다", response.status, cause);
       }
       const parsed = body as { error?: unknown; message?: unknown } | null;
       const code = typeof parsed?.error === "string" ? parsed.error : "unknown_error";

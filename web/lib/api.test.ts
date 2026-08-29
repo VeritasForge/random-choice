@@ -105,6 +105,12 @@ describe("fetchNearby", () => {
       // 글자 없는 후보 버튼을 그리고, 눌러도 아무 가게가 없는 화면으로 끝난다.
       { cuisines: ["한식"], places: [] },
       { cuisines: [{ name: "한식", count: 1 }], places: [{ name: "가게" }] },
+      // 이름이 빈 종류는 글자 없는 후보 버튼이 된다.
+      { cuisines: [{ name: "", count: 1 }], places: [] },
+      // id는 있는데 cuisine이 없는 가게 — 결과 화면 필터에 걸리지 않아 빈 목록이 된다.
+      { cuisines: [{ name: "한식", count: 1 }], places: [{ id: "1", name: "가게" }] },
+      // 화면이 그대로 그리는 이름·거리가 빠진 가게
+      { cuisines: [{ name: "한식", count: 1 }], places: [{ id: "1", cuisine: "한식" }] },
     ]) {
       respondWith(200, body);
       await expect(fetchNearby(37.5, 127.0, 500)).rejects.toMatchObject({

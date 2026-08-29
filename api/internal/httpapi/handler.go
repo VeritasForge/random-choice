@@ -119,8 +119,10 @@ func handleNearby(w http.ResponseWriter, r *http.Request, finder PlaceFinder) {
 			slog.Info("요청이 취소되었습니다", "radius", radius)
 			return
 		}
-		// 우리가 정한 조회 상한(kakao 패키지의 searchTimeout)에 걸린 경우다.
-		// 카카오가 오류를 준 것이 아니라 우리가 기다리기를 그만둔 것이므로 504가 맞고,
+		// 기다리기를 그만둔 경우다. 원인이 둘인데 둘 다 우리 쪽 상한이다 —
+		// 조회 전체 상한(kakao.DefaultSearchTimeout, 12초)이거나 페이지 한 건의
+		// 상한(kakao 쪽 http.Client.Timeout, 5초)이다. 어느 쪽이든 카카오가 오류를
+		// 준 것이 아니라 우리가 포기한 것이므로 502가 아니라 504가 맞고,
 		// 화면도 "지금 서버가 붐빈다"는 다른 문구를 보여 준다.
 		if errors.Is(err, context.DeadlineExceeded) {
 			slog.Warn("조회가 제한 시간 안에 끝나지 않았습니다", "radius", radius)
@@ -152,6 +154,15 @@ func handleNearby(w http.ResponseWriter, r *http.Request, finder PlaceFinder) {
 		writeError(w, http.StatusBadGateway, "upstream_error",
 			"장소 정보를 가져오지 못했습니다.")
 		return
+	}
+
+	if len(found) == 0 {
+		// 카카오가 한 곳도 주지 않았다. 정말 한적한 곳일 수도 있지만, 열쇠에 권한이 없거나
+		// 반경·분류 코드가 조용히 무시되는 상황일 수도 있다. 사용자에게는 두 경우가
+		// 똑같이 "음식점이 없어요"로 보이므로 서버 쪽에는 흔적을 남긴다.
+		// 두 경우를 가르는 단서가 반경이다 — 100m에서 0건은 흔하고, 20km에서 0건은 거의 확실히 이상이다.
+		// 정상 결과일 수 있으니 Error가 아니라 Info다. 이 줄이 몰려 찍히면 전면 장애다.
+		slog.Info("카카오가 한 곳도 주지 않았습니다", "radius", radius)
 	}
 
 	writeJSON(w, http.StatusOK, buildResponse(found))
@@ -223,11 +234,7 @@ func buildResponse(found []kakao.Place) nearbyResponse {
 
 	switch {
 	case len(found) == 0:
-		// 카카오가 한 곳도 주지 않았다. 정말 한적한 곳일 수도 있지만, 열쇠에 권한이 없거나
-		// 반경·분류 코드가 조용히 무시되는 상황일 수도 있다. 사용자에게는 두 경우가
-		// 똑같이 "음식점이 없어요"로 보이므로 서버 쪽에는 흔적을 남긴다.
-		// 정상 결과일 수 있으니 Error가 아니라 Info다 — 이 줄이 몰려 찍히면 전면 장애다.
-		slog.Info("카카오가 한 곳도 주지 않았습니다")
+		// 카카오가 한 곳도 주지 않은 경우는 handleNearby가 반경과 함께 남긴다.
 	case len(places) == 0:
 		// 가게는 받았는데 하나도 분류하지 못했다. 카카오가 분류 문자열 형식을
 		// 바꿨다는 신호일 수 있다.

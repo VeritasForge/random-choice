@@ -28,6 +28,16 @@ export default function CandidateScreen({
         ))}
       </div>
 
+      {/*
+        눈에는 보이지 않고 화면 낭독기만 읽는 영역.
+        "다시 뽑기"는 화면 이름을 바꾸지 않아 포커스가 움직이지 않으므로, 이것이 없으면
+        낭독기 사용자는 버튼을 누르고도 후보가 바뀌었는지 아무 소리도 듣지 못한다.
+        내용이 바뀔 때만 읽히므로 처음 들어올 때는 조용하다 — 그때는 포커스 이동이 알린다.
+      */}
+      <p role="status" aria-live="polite" className="sr-only">
+        {`후보: ${candidates.join(", ")}`}
+      </p>
+
       <div className="flex w-full flex-col gap-2">
         <button
           type="button"

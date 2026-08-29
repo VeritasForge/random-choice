@@ -29,14 +29,15 @@ const (
 	pageSize       = 15
 	maxPages       = 3
 	requestTimeout = 5 * time.Second
-	// defaultSearchTimeout은 세 페이지를 합친 전체 상한이다.
+	// DefaultSearchTimeout은 세 페이지를 합친 전체 상한이다.
 	// 페이지마다 5초를 따로 세면 최악 15초가 걸리는데, 그동안 브라우저는
 	// "주변을 살펴보는 중…"에 갇히고 서버는 연결과 고루틴을 붙잡고 있다.
 	// 한 조회가 전체로 얼마나 걸릴 수 있는지를 한곳에서 정한다.
 	//
-	// 이 값은 다른 두 곳의 근거가 된다 — 서버의 WriteTimeout·종료 대기(cmd/server/main.go)와
-	// 화면의 요청 상한(web/lib/api.ts). 바꾸면 그 두 곳도 함께 봐야 한다.
-	defaultSearchTimeout = 12 * time.Second
+	// 이 값은 다른 두 곳의 근거가 된다 — 서버의 응답 쓰기 상한·종료 대기(cmd/server/main.go)와
+	// 화면의 요청 상한(web/lib/api.ts). 세 값의 순서가 뒤집히면 안 되므로
+	// 이름을 내보내 두어, 저쪽 시험이 이 값을 손으로 베끼지 않고 직접 읽게 한다.
+	DefaultSearchTimeout = 12 * time.Second
 	// errorBodyLimit은 카카오 오류 응답에서 읽어 둘 본문의 최대 길이다.
 	// 원인을 남기되 로그가 폭주하지 않을 만큼만 자른다.
 	errorBodyLimit = 512
@@ -82,7 +83,7 @@ func NewClient(apiKey string) *Client {
 		apiKey:        apiKey,
 		baseURL:       defaultBaseURL,
 		http:          &http.Client{Timeout: requestTimeout},
-		searchTimeout: defaultSearchTimeout,
+		searchTimeout: DefaultSearchTimeout,
 	}
 }
 
@@ -92,7 +93,7 @@ func NewClientWithBaseURL(apiKey, baseURL string, hc *http.Client) *Client {
 		apiKey:        apiKey,
 		baseURL:       baseURL,
 		http:          hc,
-		searchTimeout: defaultSearchTimeout,
+		searchTimeout: DefaultSearchTimeout,
 	}
 }
 
@@ -141,10 +142,11 @@ func (c *Client) SearchRestaurants(ctx context.Context, lat, lng float64, radius
 			place, badField := toPlace(doc)
 			if badField != "" {
 				// 조용히 버리지 않는다. 이런 응답이 오기 시작하면 알아야 한다.
-				// 값 자체(좌표)는 남기지 않고 어느 항목이 깨졌는지만 남긴다 —
-				// 가게 좌표는 사용자 반경 안에 있어 위치를 좁히는 단서가 되기 때문이다.
-				slog.Warn("카카오 응답 한 건을 해석하지 못해 건너뜁니다",
-					"id", doc.ID, "field", badField)
+				// 어느 항목이 깨졌는지만 남긴다. 좌표는 물론이고 가게 식별자도 남기지 않는다 —
+				// 그 가게는 사용자 반경(기본 500m) 안에 있어, 어느 쪽이든 위치를 좁히는 단서가 된다.
+				// 형식이 바뀐 것을 알아채는 데는 항목 이름으로 충분하고,
+				// 몇 건이 빠졌는지는 httpapi 쪽 집계가 따로 센다.
+				slog.Warn("카카오 응답 한 건을 해석하지 못해 건너뜁니다", "field", badField)
 				continue
 			}
 			// 식별자가 빈 건은 중복 판정을 할 수 없다. 하나로 뭉뚱그리면
@@ -213,10 +215,14 @@ func (c *Client) fetchPage(ctx context.Context, lat, lng float64, radius, page i
 	if res.StatusCode != http.StatusOK {
 		// 카카오는 실패 이유를 본문에 담아 준다. 상태 코드만 남기면 원인 후보가 넓은 채로
 		// 남고, 좌표를 로그에 남기지 않기로 했으므로 요청을 그대로 재구성할 수도 없다.
-		// 본문에는 사용자 좌표가 들어 있지 않으므로 앞부분만 잘라 함께 남긴다.
-		snippet, _ := io.ReadAll(io.LimitReader(res.Body, errorBodyLimit))
+		snippet, readErr := io.ReadAll(io.LimitReader(res.Body, errorBodyLimit))
+		if readErr != nil && ctx.Err() != nil {
+			// 본문을 읽는 도중 상한에 걸렸다. 이 사실을 버리면 시간 초과가
+			// 그냥 "응답 코드 5xx"로 보여, 부르는 쪽이 504로 답할 근거를 잃는다.
+			return nil, fmt.Errorf("%w: %w", ErrUpstream, ctx.Err())
+		}
 		return nil, fmt.Errorf("%w: 응답 코드 %d: %s",
-			ErrUpstream, res.StatusCode, bytes.TrimSpace(snippet))
+			ErrUpstream, res.StatusCode, describeErrorBody(snippet))
 	}
 
 	var parsed searchResponse
@@ -278,4 +284,25 @@ func finiteFloat(raw string) (float64, bool) {
 		return 0, false
 	}
 	return value, true
+}
+
+// kakaoError는 카카오가 오류 본문에 담아 주는 형식이다.
+type kakaoError struct {
+	ErrorType string `json:"errorType"`
+	Message   string `json:"message"`
+}
+
+// describeErrorBody는 오류 본문에서 진단에 쓸 부분만 뽑는다.
+//
+// 본문을 그대로 싣지 않는 이유: 카카오 앞에 게이트웨이가 있으면 그것이 답하는 오류 문서에는
+// 요청한 주소나 헤더가 되울려 들어올 수 있다. 그 주소의 x·y가 사용자 좌표이고 헤더에는
+// 카카오 열쇠가 들어 있어, 통째로 실으면 stripURL로 막아 둔 것이 이 경로로 다시 새어 나간다.
+// 카카오가 정한 형식이 맞을 때만 그 두 항목을 옮기고, 아니면 길이만 남긴다.
+func describeErrorBody(body []byte) string {
+	trimmed := bytes.TrimSpace(body)
+	var parsed kakaoError
+	if err := json.Unmarshal(trimmed, &parsed); err == nil && parsed.ErrorType != "" {
+		return fmt.Sprintf("%s: %s", parsed.ErrorType, parsed.Message)
+	}
+	return fmt.Sprintf("카카오 형식이 아닌 본문 %d바이트", len(trimmed))
 }

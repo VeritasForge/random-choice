@@ -19,7 +19,7 @@ export type ErrorNotice = {
  * 아무도 모르고, 화면은 위치 문제라는 사실조차 알리지 못한 채
  * "문제가 생겼어요"만 보여 준다.
  */
-const GEO_TEXT: Record<GeoErrorCode, ErrorNotice> = {
+export const GEO_TEXT: Record<GeoErrorCode, ErrorNotice> = {
   permission_denied: {
     title: "위치를 알아야 주변 음식점을 찾을 수 있어요",
     description:
@@ -34,6 +34,12 @@ const GEO_TEXT: Record<GeoErrorCode, ErrorNotice> = {
   unsupported: {
     title: "이 브라우저는 위치 기능을 지원하지 않아요",
     description: "크롬이나 사파리 같은 최신 브라우저에서 다시 열어 주세요.",
+    retryable: false,
+  },
+  insecure_context: {
+    title: "안전한 연결에서만 위치를 쓸 수 있어요",
+    description:
+      "주소가 https로 시작하는 곳에서 다시 열어 주세요. 지금 주소로는 다시 시도해도 같은 결과가 나옵니다.",
     retryable: false,
   },
 };
@@ -132,7 +138,9 @@ const FALLBACK: ErrorNotice = {
  * 모르는 코드일 때만 서버 문구를 쓴다. 그때는 그것이 유일한 단서다.
  */
 export function errorNotice(code: string, serverMessage?: string): ErrorNotice {
-  const known = ERROR_TEXT[code];
+  // Object.hasOwn으로 확인한다. 그냥 색인하면 "constructor"·"toString" 같은
+  // 원형 사슬의 이름이 참으로 평가되어, 제목과 설명이 빈 오류 카드가 뜬다.
+  const known = Object.hasOwn(ERROR_TEXT, code) ? ERROR_TEXT[code] : undefined;
   if (known) {
     return known;
   }

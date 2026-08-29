@@ -79,4 +79,19 @@ describe("getCurrentPosition", () => {
     // 그러면 신호가 약한 실내에서 위치 조회가 늘 실패해 사용자가 시작 화면에서 막힌다.
     expect(POSITION_TIMEOUT_MS).toBeGreaterThanOrEqual(5_000);
   });
+  it("https가 아닌 곳에서는 insecure_context로 구분한다", async () => {
+    // 이 경우 브라우저는 권한 거부로 답한다. 그것을 permission_denied로 보면 화면이
+    // "자물쇠 아이콘을 눌러 허용하세요"라고 안내하는데, 그 방법으로는 절대 풀리지 않는다.
+    stubGeolocation((_ok, fail) => fail({ code: 1, PERMISSION_DENIED: 1 }));
+    vi.stubGlobal("window", { isSecureContext: false });
+    await expect(getCurrentPosition()).rejects.toMatchObject({
+      code: "insecure_context",
+    });
+  });
+
+  it("https인 곳에서는 그 검사가 걸리지 않는다", async () => {
+    stubGeolocation((ok) => ok({ coords: { latitude: 37.5, longitude: 127.0 } }));
+    vi.stubGlobal("window", { isSecureContext: true });
+    await expect(getCurrentPosition()).resolves.toEqual({ lat: 37.5, lng: 127.0 });
+  });
 });

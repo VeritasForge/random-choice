@@ -511,3 +511,123 @@ func TestSearchRestaurantsIncludesKakaoErrorBody(t *testing.T) {
 		t.Errorf("카카오가 준 설명이 오류에 담겨야 한다. 받은 오류: %v", err)
 	}
 }
+
+func TestConstructorsGiveEveryClientASearchBudget(t *testing.T) {
+	// 조회 상한이 상수에서 필드로 옮겨 오면서 그것을 채우는 책임이 생성자로 넘어갔다.
+	// 운영용 NewClient는 어떤 시험도 부르지 않으므로, 여기서 값이 채워지는지 못박는다.
+	// 비어 있으면 상한이 0이 되어 모든 조회가 즉시 시간 초과로 끝난다 — 전면 장애다.
+	for name, client := range map[string]*Client{
+		"NewClient":            NewClient("test-key"),
+		"NewClientWithBaseURL": NewClientWithBaseURL("test-key", "http://example.test", &http.Client{}),
+	} {
+		if client.searchTimeout != DefaultSearchTimeout {
+			t.Errorf("%s의 조회 상한이 %v다. %v여야 한다",
+				name, client.searchTimeout, DefaultSearchTimeout)
+		}
+		if client.http == nil {
+			t.Errorf("%s가 HTTP 클라이언트를 채우지 않았다", name)
+		}
+	}
+}
+
+func TestSearchRestaurantsDoesNotLeakCoordinatesWhenTheURLIsBad(t *testing.T) {
+	// 주소를 만들지 못한 경우에도 오류에 그 주소가 담긴다. 통신 실패 경로만 막고
+	// 이쪽을 놓치면, 설정이 잘못된 배포에서 좌표가 그대로 로그에 쌓인다.
+	client := NewClientWithBaseURL("test-key", "http://[::1]:namedport", &http.Client{})
+	_, err := client.SearchRestaurants(context.Background(), 37.4979, 127.0276, 500)
+	if err == nil {
+		t.Fatal("주소를 만들지 못했어야 한다")
+	}
+	for _, secret := range []string{"37.4979", "127.0276", "test-key"} {
+		if strings.Contains(err.Error(), secret) {
+			t.Errorf("오류 문자열에 %q가 들어 있다: %v", secret, err)
+		}
+	}
+}
+
+func TestSearchRestaurantsSkipsBrokenLatitude(t *testing.T) {
+	// 경도·거리와 달리 위도가 깨진 경우를 다루는 갈래는 시험 자료에 없었다.
+	// 항목 이름을 잘못 적어 두어도(복사·붙여넣기에서 흔하다) 아무도 모른다.
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, `{"documents": [
+			{"id": "1", "place_name": "위도깨짐", "category_name": "음식점 > 분식",
+			 "road_address_name": "주소", "place_url": "", "x": "127.0", "y": "NaN", "distance": "10"},
+			{"id": "2", "place_name": "멀쩡한집", "category_name": "음식점 > 분식",
+			 "road_address_name": "주소", "place_url": "", "x": "127.0", "y": "37.5", "distance": "10"}
+		], "meta": {"is_end": true}}`)
+	}))
+	defer server.Close()
+
+	client := NewClientWithBaseURL("test-key", server.URL, server.Client())
+	places, err := client.SearchRestaurants(context.Background(), 37.49, 127.02, 500)
+	if err != nil {
+		t.Fatalf("한 건이 깨졌다고 조회 전체가 실패하면 안 된다: %v", err)
+	}
+	if len(places) != 1 || places[0].ID != "2" {
+		t.Fatalf("멀쩡한 한 곳만 남아야 한다. 받은 값: %+v", places)
+	}
+}
+
+func TestToPlaceNamesTheBrokenField(t *testing.T) {
+	// 로그에 남는 것이 항목 이름뿐이므로, 그 이름이 실제로 맞아야 진단에 쓸모가 있다.
+	base := document{ID: "1", X: "127.0", Y: "37.5", Distance: "10"}
+	tests := []struct {
+		name string
+		doc  document
+		want string
+	}{
+		{"정상", base, ""},
+		{"경도가 깨짐", document{ID: "1", X: "NaN", Y: "37.5", Distance: "10"}, "x"},
+		{"위도가 깨짐", document{ID: "1", X: "127.0", Y: "Inf", Distance: "10"}, "y"},
+		{"거리가 깨짐", document{ID: "1", X: "127.0", Y: "37.5", Distance: "가까움"}, "distance"},
+		{"거리가 음수", document{ID: "1", X: "127.0", Y: "37.5", Distance: "-1"}, "distance"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if _, got := toPlace(tt.doc); got != tt.want {
+				t.Errorf("깨진 항목을 %q라고 했다. %q여야 한다", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestSearchRestaurantsDoesNotEchoUnknownErrorBodies(t *testing.T) {
+	// 카카오 앞에 게이트웨이가 있으면 그것이 답하는 오류 문서에 요청 주소나 헤더가
+	// 되울려 들어올 수 있다. 그 주소의 x·y가 사용자 좌표이고 헤더에는 열쇠가 있다.
+	// 카카오가 정한 형식이 아니면 내용을 옮기지 않아야 한다.
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusBadGateway)
+		fmt.Fprintf(w, "<html><body>Bad Gateway<br>request: %s<br>auth: %s</body></html>",
+			r.URL.String(), r.Header.Get("Authorization"))
+	}))
+	defer server.Close()
+
+	client := NewClientWithBaseURL("test-key", server.URL, server.Client())
+	_, err := client.SearchRestaurants(context.Background(), 37.4979, 127.0276, 500)
+	if !errors.Is(err, ErrUpstream) {
+		t.Fatalf("상위 서비스 오류여야 한다. 받은 오류: %v", err)
+	}
+	for _, secret := range []string{"37.4979", "127.0276", "test-key", "KakaoAK"} {
+		if strings.Contains(err.Error(), secret) {
+			t.Errorf("오류 문자열에 %q가 들어 있다: %v", secret, err)
+		}
+	}
+}
+
+func TestSearchRestaurantsCapsTheErrorBody(t *testing.T) {
+	// 카카오 형식의 message가 아주 길어도 오류 문자열이 로그를 잠그면 안 된다.
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusBadRequest)
+		fmt.Fprintf(w, `{"errorType":"InvalidArgument","message":"%s"}`, strings.Repeat("가", 5000))
+	}))
+	defer server.Close()
+
+	client := NewClientWithBaseURL("test-key", server.URL, server.Client())
+	_, err := client.SearchRestaurants(context.Background(), 37.49, 127.02, 500)
+	if err == nil {
+		t.Fatal("오류가 나야 한다")
+	}
+	if len(err.Error()) > 2000 {
+		t.Errorf("오류 문자열이 %d바이트다. 상한 언저리에서 멈춰야 한다", len(err.Error()))
+	}
+}

@@ -17,8 +17,9 @@ import (
 	"github.com/VeritasForge/random-choice/api/internal/kakao"
 )
 
-// 세 시간값은 서로 맞물려 있다. 카카오 조회 상한(12초, kakao 패키지의 defaultSearchTimeout)이
+// 세 시간값은 서로 맞물려 있다. 카카오 조회 상한(kakao.DefaultSearchTimeout)이
 // 가장 안쪽이고, 그것을 감싸는 응답 쓰기 상한, 그것을 감싸는 종료 대기 순으로 커야 한다.
+// 그 순서는 main_test.go의 TestTimeoutsAreOrderedOutward가 kakao 쪽 값을 직접 읽어 지킨다.
 //
 // 순서가 뒤집히면 정상 종료가 제 일을 못 한다 — 종료 대기가 쓰기 상한보다 짧으면,
 // 아직 살아 있어도 되는 요청을 Shutdown이 시간 초과로 판정해 그대로 끊는다.
@@ -73,7 +74,9 @@ func main() {
 
 // run은 서버를 돌리다가 ctx가 끝나면 정상 종료한다.
 // main에서 떼어 둔 이유는 시험에서 신호 없이 이 동작을 확인하기 위해서다.
+//
 // onShutdown은 종료를 시작할 때 한 번 불린다(신호 처리를 기본 동작으로 되돌리는 용도).
+// nil이어도 된다 — 그때는 아무 일도 하지 않는다. 신호를 쓰지 않는 시험이 그렇게 부른다.
 func run(ctx context.Context, server *http.Server, listener net.Listener, onShutdown func()) error {
 	serverErr := make(chan error, 1)
 	go func() {
