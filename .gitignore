@@ -15,3 +15,6 @@ npm-debug.log*
 
 # OS
 .DS_Store
+
+# Playwright MCP가 브라우저 확인 중에 남기는 임시 산출물
+.playwright-mcp/
