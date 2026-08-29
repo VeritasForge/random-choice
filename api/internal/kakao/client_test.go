@@ -213,3 +213,53 @@ func TestSearchRestaurantsReportsBrokenJSON(t *testing.T) {
 		t.Errorf("해석 실패도 상위 서비스 오류로 다뤄야 한다. 받은 오류: %v", err)
 	}
 }
+
+func TestSearchRestaurantsSkipsUnparsableRecords(t *testing.T) {
+	// 카카오가 좌표에 "NaN"을 돌려주는 경우. ParseFloat는 이걸 오류 없이 받아들이므로
+	// 여기서 막지 않으면 NaN이 응답까지 흘러가 JSON 인코딩을 깨뜨린다.
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, `{"documents": [
+			{"id": "1", "place_name": "좌표깨짐", "category_name": "음식점 > 분식",
+			 "road_address_name": "주소", "place_url": "", "x": "NaN", "y": "37.5", "distance": "10"},
+			{"id": "2", "place_name": "거리깨짐", "category_name": "음식점 > 분식",
+			 "road_address_name": "주소", "place_url": "", "x": "127.0", "y": "37.5", "distance": "가까움"},
+			{"id": "3", "place_name": "무한대", "category_name": "음식점 > 분식",
+			 "road_address_name": "주소", "place_url": "", "x": "Inf", "y": "37.5", "distance": "10"},
+			{"id": "4", "place_name": "멀쩡한집", "category_name": "음식점 > 분식",
+			 "road_address_name": "주소", "place_url": "", "x": "127.0", "y": "37.5", "distance": "10"}
+		], "meta": {"is_end": true}}`)
+	}))
+	defer server.Close()
+
+	client := NewClientWithBaseURL("test-key", server.URL, server.Client())
+	places, err := client.SearchRestaurants(context.Background(), 37.49, 127.02, 500)
+	if err != nil {
+		t.Fatalf("한 건이 깨졌다고 조회 전체가 실패하면 안 된다: %v", err)
+	}
+	if len(places) != 1 || places[0].ID != "4" {
+		t.Fatalf("멀쩡한 한 곳만 남아야 한다. 받은 값: %+v", places)
+	}
+}
+
+func TestSearchRestaurantsStopsAtThreePagesEvenIfKakaoNeverEnds(t *testing.T) {
+	// 카카오가 is_end를 영영 켜 주지 않아도 우리가 스스로 멈춰야 한다.
+	// 이 시험이 maxPages 상한을 고정한다 — 상한을 올리면 여기서 실패한다.
+	var calls int
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		fmt.Fprint(w, pageJSON(15, false))
+	}))
+	defer server.Close()
+
+	client := NewClientWithBaseURL("test-key", server.URL, server.Client())
+	places, err := client.SearchRestaurants(context.Background(), 37.49, 127.02, 500)
+	if err != nil {
+		t.Fatalf("오류가 나면 안 된다: %v", err)
+	}
+	if calls != 3 {
+		t.Errorf("카카오를 %d번 불렀다. is_end가 안 와도 3번에서 멈춰야 한다", calls)
+	}
+	if len(places) != 45 {
+		t.Errorf("%d곳을 받았다. 15 × 3 = 45곳이어야 한다", len(places))
+	}
+}

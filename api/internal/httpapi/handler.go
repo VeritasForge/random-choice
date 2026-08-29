@@ -102,7 +102,8 @@ func handleNearby(w http.ResponseWriter, r *http.Request, finder PlaceFinder) {
 				"오늘 조회 한도를 다 썼습니다. 내일 다시 이용해 주세요.")
 			return
 		}
-		slog.Error("주변 음식점 조회에 실패했습니다", "error", err)
+		slog.Error("주변 음식점 조회에 실패했습니다",
+			"error", err, "lat", lat, "lng", lng, "radius", radius)
 		writeError(w, http.StatusBadGateway, "upstream_error",
 			"장소 정보를 가져오지 못했습니다.")
 		return

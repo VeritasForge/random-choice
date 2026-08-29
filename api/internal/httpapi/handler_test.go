@@ -202,6 +202,24 @@ func TestNearbyMapsUpstreamFailure(t *testing.T) {
 	}
 }
 
+func TestNearbyResponseIsAlwaysValidJSON(t *testing.T) {
+	// 좌표에 NaN이 들어오면 encoding/json이 실패하는데, 그때는 이미 200을 보낸 뒤라
+	// 클라이언트가 빈 본문을 받는다. kakao 패키지가 NaN을 걸러 주는 것이 1차 방어선이고,
+	// 이 시험은 그 방어선이 뚫렸을 때 어떤 일이 벌어지는지를 문서로 남긴다.
+	finder := &fakeFinder{places: []kakao.Place{
+		{ID: "1", Name: "정상", CategoryName: "음식점 > 분식", Distance: 10, Lat: 37.5, Lng: 127.0},
+	}}
+	rec := get(t, NewHandler(finder), "/api/v1/nearby?lat=37.5&lng=127.0")
+
+	var parsed map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &parsed); err != nil {
+		t.Fatalf("응답이 유효한 JSON이 아니다: %v (본문: %s)", err, rec.Body.String())
+	}
+	if rec.Body.Len() == 0 {
+		t.Fatal("본문이 비어 있다")
+	}
+}
+
 func TestHealthz(t *testing.T) {
 	rec := get(t, NewHandler(nil), "/healthz")
 	if rec.Code != http.StatusOK {
