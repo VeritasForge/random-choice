@@ -53,12 +53,17 @@ export function getCurrentPosition(): Promise<Coords> {
     navigator.geolocation.getCurrentPosition(
       (position) =>
         resolve({ lat: position.coords.latitude, lng: position.coords.longitude }),
-      (error) =>
+      (error) => {
+        // 브라우저가 준 원인을 남긴다. position_unavailable은 시간 초과·제공자 실패·
+        // 좌표 산출 실패를 한 갈래로 묶으므로, 여기서 남기지 않으면 개발자 도구를
+        // 열어 두어도 실제 원인의 흔적이 하나도 없다.
+        console.error("[getCurrentPosition] 위치 확인 실패", error.code, error.message);
         reject(
           error.code === error.PERMISSION_DENIED
             ? new GeoError("permission_denied", "위치 권한이 거부되었습니다.")
             : new GeoError("position_unavailable", "현재 위치를 확인하지 못했습니다."),
-        ),
+        );
+      },
       { enableHighAccuracy: false, timeout: POSITION_TIMEOUT_MS, maximumAge: 0 },
     );
   });

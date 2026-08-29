@@ -94,4 +94,12 @@ describe("getCurrentPosition", () => {
     vi.stubGlobal("window", { isSecureContext: true });
     await expect(getCurrentPosition()).resolves.toEqual({ lat: 37.5, lng: 127.0 });
   });
+
+  it("isSecureContext를 모르는 브라우저는 막지 않는다", async () => {
+    // 검사를 `!== true`로 한 글자만 바꾸면 이 브라우저에서 위치 기능이 통째로 막히고,
+    // 그 안내는 재시도 불가라 사용자에게 막다른 길이 된다.
+    stubGeolocation((ok) => ok({ coords: { latitude: 37.5, longitude: 127.0 } }));
+    vi.stubGlobal("window", {});
+    await expect(getCurrentPosition()).resolves.toEqual({ lat: 37.5, lng: 127.0 });
+  });
 });

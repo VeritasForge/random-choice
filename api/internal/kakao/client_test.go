@@ -615,7 +615,7 @@ func TestSearchRestaurantsDoesNotEchoUnknownErrorBodies(t *testing.T) {
 }
 
 func TestSearchRestaurantsCapsTheErrorBody(t *testing.T) {
-	// 카카오 형식의 message가 아주 길어도 오류 문자열이 로그를 잠그면 안 된다.
+	// 카카오 앞단이 아주 긴 오류 문서를 돌려주는 날에도 오류 문자열이 로그를 잠그면 안 된다.
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusBadRequest)
 		fmt.Fprintf(w, `{"errorType":"InvalidArgument","message":"%s"}`, strings.Repeat("가", 5000))
@@ -629,5 +629,97 @@ func TestSearchRestaurantsCapsTheErrorBody(t *testing.T) {
 	}
 	if len(err.Error()) > 2000 {
 		t.Errorf("오류 문자열이 %d바이트다. 상한 언저리에서 멈춰야 한다", len(err.Error()))
+	}
+}
+
+func TestDescribeErrorBody(t *testing.T) {
+	// 오류 본문에서 무엇을 옮기고 무엇을 버리는지를 직접 고정한다.
+	// httptest 왕복으로만 확인하면 경계값이 하나도 묶이지 않는다.
+	// 카카오 형식이 아닌 갈래는 길이만 남기므로, 기대값도 길이로 만든다.
+	// 숫자를 손으로 적으면 본문을 조금만 고쳐도 시험이 엉뚱하게 깨진다.
+	lengthOnly := func(body string) string {
+		return fmt.Sprintf("카카오 형식이 아닌 본문 %d바이트", len(body))
+	}
+	tests := []struct {
+		name string
+		body string
+		want string
+	}{
+		{"카카오 형식", `{"errorType":"InvalidArgument","message":"radius is out of range"}`,
+			"InvalidArgument: radius is out of range"},
+		{"errorType이 빈 객체", `{"errorType":"","message":"무언가"}`, ""},
+		{"message만 있는 객체", `{"message":"upstream connect error"}`, ""},
+		{"JSON 배열", `[1,2,3]`, ""},
+		{"JSON null", `null`, ""},
+		{"빈 본문", ``, ""},
+		{"HTML", `<html>Bad Gateway</html>`, ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			want := tt.want
+			if want == "" {
+				want = lengthOnly(tt.body)
+			}
+			if got := describeErrorBody([]byte(tt.body)); got != want {
+				t.Errorf("설명이 %q다. %q여야 한다", got, want)
+			}
+		})
+	}
+}
+
+func TestDescribeErrorBodyDropsEchoedRequestValues(t *testing.T) {
+	// 카카오 형식이 맞다는 것이 "카카오가 답했다"는 증명은 아니다.
+	// 게이트웨이도 같은 모양으로 답하면서 우리가 보낸 값을 되울릴 수 있다.
+	body := []byte(`{"errorType":"UpstreamError","message":"failed for x=127.0276&y=37.4979"}`)
+	got := describeErrorBody(body, "test-key", "127.0276", "37.4979")
+	for _, secret := range []string{"127.0276", "37.4979"} {
+		if strings.Contains(got, secret) {
+			t.Errorf("설명에 %q가 남았다: %q", secret, got)
+		}
+	}
+}
+
+func TestSearchRestaurantsDoesNotEchoKakaoShapedGatewayErrors(t *testing.T) {
+	// 위 판정이 실제 조회 경로에서도 도는지 확인한다. 게이트웨이는 HTML보다
+	// JSON으로 답하는 쪽이 오히려 흔하고, 그 문서에 요청 주소가 되울려 들어온다.
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusBadGateway)
+		fmt.Fprintf(w, `{"errorType":"UpstreamError","message":"connect failed for %s","auth":"%s"}`,
+			r.URL.String(), r.Header.Get("Authorization"))
+	}))
+	defer server.Close()
+
+	client := NewClientWithBaseURL("test-key", server.URL, server.Client())
+	_, err := client.SearchRestaurants(context.Background(), 37.4979, 127.0276, 500)
+	if !errors.Is(err, ErrUpstream) {
+		t.Fatalf("상위 서비스 오류여야 한다. 받은 오류: %v", err)
+	}
+	for _, secret := range []string{"37.4979", "127.0276", "test-key", "KakaoAK"} {
+		if strings.Contains(err.Error(), secret) {
+			t.Errorf("오류 문자열에 %q가 들어 있다: %v", secret, err)
+		}
+	}
+}
+
+func TestSearchRestaurantsReportsTimeoutWhileReadingErrorBody(t *testing.T) {
+	// 오류 상태를 받은 뒤 본문에서 멈추는 경로. 이 갈래를 놓치면 시간 초과가
+	// 그냥 "응답 코드 5xx"로 보여, 부르는 쪽이 504로 답할 근거를 잃고 502로 답한다.
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Length", "4096")
+		w.WriteHeader(http.StatusBadGateway)
+		_, _ = w.Write([]byte("{"))
+		if flusher, ok := w.(http.Flusher); ok {
+			flusher.Flush()
+		}
+		<-r.Context().Done()
+	}))
+	defer server.Close()
+
+	client := NewClientWithBaseURL("test-key", server.URL, server.Client())
+	client.searchTimeout = 100 * time.Millisecond
+
+	_, err := client.SearchRestaurants(context.Background(), 37.49, 127.02, 500)
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Errorf("시간 초과임을 errors.Is로 알아볼 수 있어야 한다. 받은 오류: %v", err)
 	}
 }

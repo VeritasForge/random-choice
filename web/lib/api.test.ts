@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { fetchNearby, NearbyError, REQUEST_TIMEOUT_MS } from "./api";
 
@@ -193,8 +195,125 @@ describe("fetchNearby", () => {
   });
 
   it("상한이 서버 쪽 조회 상한보다 넉넉하다", () => {
-    // 서버는 카카오 조회 전체를 12초에서 끊는다(api/internal/kakao/client.go).
-    // 화면 상한이 그보다 짧으면 서버가 정상으로 답할 요청까지 우리가 먼저 포기한다.
-    expect(REQUEST_TIMEOUT_MS).toBeGreaterThan(12_000);
+    // 화면 상한이 서버 상한보다 짧으면, 서버가 정상으로 답할 요청까지 우리가 먼저 포기한다.
+    // 서버 값을 손으로 베끼면 그쪽을 올렸을 때 이 시험이 조용히 통과하므로,
+    // Go 소스에서 직접 뽑아 비교한다(errors.test.ts가 오류 코드에 쓰는 방식과 같다).
+    const source = readFileSync(
+      fileURLToPath(new URL("../../api/internal/kakao/client.go", import.meta.url)),
+      "utf8",
+    );
+    const match = source.match(/DefaultSearchTimeout = (\d+) \* time\.Second/);
+    expect(
+      match,
+      "서버 조회 상한을 client.go에서 찾지 못했다 — 대조 방법이 더 이상 통하지 않는다",
+    ).not.toBeNull();
+    expect(REQUEST_TIMEOUT_MS).toBeGreaterThan(Number(match![1]) * 1000);
+  });
+
+  it("오류 응답에서도 본문이 멈추면 timeout으로 던진다", () => {
+    // 200 경로와 짝이 되는 시험이다. 이 갈래가 없으면 프록시가 502 헤더만 보내고
+    // 본문을 끝내지 않는 흔한 상황에서 "문제가 생겼어요"만 뜨고,
+    // 사용자는 기다리다 실패했다는 사실도 안내받지 못한다.
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_url: string, init?: { signal?: AbortSignal }) => {
+        const stream = new ReadableStream({
+          start(controller) {
+            controller.enqueue(new TextEncoder().encode('{"error":'));
+            init?.signal?.addEventListener("abort", () =>
+              controller.error(new DOMException("Aborted", "AbortError")),
+            );
+          },
+        });
+        return new Response(stream, {
+          status: 502,
+          headers: { "Content-Type": "application/json" },
+        });
+      }),
+    );
+    vi.useFakeTimers();
+    const pending = fetchNearby(37.5, 127.0, 500);
+    const assertion = expect(pending).rejects.toMatchObject({
+      code: "timeout",
+      status: 502,
+    });
+    return vi
+      .advanceTimersByTimeAsync(REQUEST_TIMEOUT_MS)
+      .then(() => assertion)
+      .finally(() => vi.useRealTimers());
+  });
+});
+
+describe("응답 원소 검사 — 항목 하나씩", () => {
+  // 여러 항목을 한꺼번에 뺀 자료로만 시험하면, 먼저 걸리는 검사 하나가 나머지를 가린다.
+  // 실제로 검사를 하나만 지워도 다른 시험이 전부 통과한다. 그래서 온전한 가게 한 건을
+  // 기준으로 두고 항목을 하나씩만 어긋뜨린다.
+  const GOOD_PLACE = {
+    id: "1",
+    name: "김밥집",
+    cuisine: "분식",
+    distance: 100,
+    roadAddress: "서울 강남구 테헤란로 1",
+    phone: "02-000-0000",
+    placeUrl: "http://place.map.kakao.com/1",
+    lat: 37.5,
+    lng: 127.0,
+  };
+  const GOOD_CUISINES = [{ name: "분식", count: 1 }];
+
+  const cases: Record<string, Record<string, unknown>> = {
+    "이름이 없다": { name: undefined },
+    "도로명 주소가 없다": { roadAddress: undefined },
+    "장소 주소가 없다": { placeUrl: undefined },
+    "거리가 없다": { distance: undefined },
+    "거리가 숫자가 아니다": { distance: "100" },
+    "종류가 빈 문자열이다": { cuisine: "" },
+    "식별자가 숫자다": { id: 1 },
+  };
+
+  for (const [label, patch] of Object.entries(cases)) {
+    it(`가게에 ${label} — malformed_response`, async () => {
+      respondWith(200, {
+        cuisines: GOOD_CUISINES,
+        places: [{ ...GOOD_PLACE, ...patch }],
+      });
+      await expect(fetchNearby(37.5, 127.0, 500)).rejects.toMatchObject({
+        code: "malformed_response",
+      });
+    });
+  }
+
+  it("거리가 무한대여도 거른다", async () => {
+    // JSON.stringify는 Infinity를 null로 바꾸므로 원문 응답으로 보낸다.
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () =>
+          new Response(
+            '{"cuisines":[{"name":"분식","count":1}],"places":[{"id":"1","name":"김밥집","cuisine":"분식","distance":1e999,"roadAddress":"주소","phone":"","placeUrl":"http://x","lat":37.5,"lng":127.0}]}',
+            { status: 200, headers: { "Content-Type": "application/json" } },
+          ),
+      ),
+    );
+    await expect(fetchNearby(37.5, 127.0, 500)).rejects.toMatchObject({
+      code: "malformed_response",
+    });
+  });
+
+  it("온전한 응답은 그대로 통과시킨다", async () => {
+    // 위 검사들이 정상 응답까지 막지 않는지 확인하는 대조군이다.
+    const payload = { cuisines: GOOD_CUISINES, places: [GOOD_PLACE] };
+    respondWith(200, payload);
+    await expect(fetchNearby(37.5, 127.0, 500)).resolves.toEqual(payload);
+  });
+
+  it("도로명 주소와 장소 주소는 비어 있어도 통과시킨다", async () => {
+    // 서버가 실제로 보내는 값이다. 길이까지 요구하면 정상 응답을 튕겨 낸다.
+    const payload = {
+      cuisines: GOOD_CUISINES,
+      places: [{ ...GOOD_PLACE, roadAddress: "", placeUrl: "", id: "", distance: 0 }],
+    };
+    respondWith(200, payload);
+    await expect(fetchNearby(37.5, 127.0, 500)).resolves.toEqual(payload);
   });
 });

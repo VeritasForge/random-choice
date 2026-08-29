@@ -180,13 +180,16 @@ export default function Home() {
         <Notice
           title={notice.title}
           description={notice.description}
-          // 안내 문구가 "다시 시도해도 같은 결과"라고 말하는 오류에까지 다시 시도
-          // 버튼만 보여 주면, 방금 고친 빈 결과 화면과 같은 막다른 길이 된다.
-          actions={[
+          // 재시도가 소용없는 오류에는 버튼을 아예 두지 않는다.
+          // "다시 시도"는 물론이고 "처음부터 다시"도 결국 같은 실패로 되돌아가므로,
+          // 무엇이든 누를 것을 주면 방금 고친 빈 결과 화면과 같은 막다른 길이 된다.
+          // 그런 오류의 안내 문구는 화면 밖에서 할 일(주소를 https로, 관리자에게 알리기,
+          // 내일 다시)을 이미 담고 있다.
+          actions={
             notice.retryable
-              ? { label: "다시 시도", onClick: () => start(view.radius) }
-              : { label: "처음부터 다시", onClick: () => setView({ kind: "start" }) },
-          ]}
+              ? [{ label: "다시 시도", onClick: () => start(view.radius) }]
+              : []
+          }
         />
       )}
     </main>

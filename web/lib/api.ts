@@ -70,7 +70,8 @@ function isPlace(value: unknown): value is Place {
     typeof candidate.cuisine === "string" &&
     candidate.cuisine.length > 0 &&
     // 아래 넷은 결과 화면이 그대로 그리는 값이다. 빠지면 이름 없는 줄과
-    // "undefinedm"이 오류 없이 표시된다.
+    // 단위만 남은 거리("m")가 오류 없이 표시된다
+    // (React는 undefined 자식을 아무것도 그리지 않는다).
     typeof candidate.name === "string" &&
     typeof candidate.roadAddress === "string" &&
     typeof candidate.placeUrl === "string" &&
