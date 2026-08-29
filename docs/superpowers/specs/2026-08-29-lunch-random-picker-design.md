@@ -327,7 +327,13 @@ GET /api/v1/nearby?lat=37.4979&lng=127.0276&radius=500
 7. 열쇠 없이 서버를 켜고 `/api/v1/nearby?lat=37.5&lng=127.0` 를 호출하면 500과 `not_configured` 가 돌아온다. (열쇠가 없어도 서버가 죽지 않는다)
 8. 잘못된 좌표(`lat=999`)를 호출하면 400과 `invalid_coordinates` 가 돌아온다.
 9. 저장소를 쓰는 코드가 없다. `grep -rn "localStorage\|sessionStorage\|database/sql\|redis" api/ web/app web/lib web/components` 결과가 비어 있다.
-10. 열쇠가 소스 코드에 들어 있지 않다. `grep -rn "KakaoAK [A-Za-z0-9]" api/ web/` 결과가 비어 있다.
+10. 진짜 열쇠가 소스 코드에 들어 있지 않다. 아래 명령의 출력이 비어 있다.
+    ```bash
+    grep -rn "KakaoAK [A-Za-z0-9]" api/ web/app web/lib web/components | grep -v "_test\.go"
+    ```
+    시험 파일을 빼는 이유: `api/internal/kakao/client_test.go`가 인증 헤더가 올바른지 확인하려면
+    `"KakaoAK test-key"`라는 문자열을 갖고 있어야 한다. `test-key`는 누가 봐도 가짜이고,
+    이 검사가 찾는 것은 실수로 커밋된 진짜 열쇠다.
 
 ## 13. 시작 전에 필요한 준비물
 

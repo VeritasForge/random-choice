@@ -2136,8 +2136,8 @@ cd web && npm run build && npm test && npx tsc --noEmit && cd ..
 # 저장소를 쓰는 코드가 없어야 한다 (출력이 비어 있어야 함)
 grep -rn "localStorage\|sessionStorage\|database/sql\|redis" api/ web/app web/lib web/components
 
-# 열쇠가 소스에 들어 있지 않아야 한다 (출력이 비어 있어야 함)
-grep -rn "KakaoAK [A-Za-z0-9]" api/ web/app web/lib web/components
+# 진짜 열쇠가 소스에 들어 있지 않아야 한다 (출력이 비어 있어야 함)
+grep -rn "KakaoAK [A-Za-z0-9]" api/ web/app web/lib web/components | grep -v "_test\.go"
 
 # 열쇠 없이 서버를 켜고 확인
 cd api && go build -o /tmp/rc-server ./cmd/server && (/tmp/rc-server &) && sleep 1 && cd ..
@@ -2146,7 +2146,7 @@ curl -s "http://localhost:8080/api/v1/nearby?lat=999&lng=127.0"    # invalid_coo
 pkill -f /tmp/rc-server
 ```
 
-`grep`의 `KakaoAK [A-Za-z0-9]` 는 소스에 박힌 진짜 열쇠를 찾는 것이다. `client.go`의 `"KakaoAK "+c.apiKey` 는 뒤가 따옴표라 걸리지 않고, 시험의 `"KakaoAK test-key"` 는 `web/` 아래가 아니어서 검사 범위 밖이다.
+`grep`의 `KakaoAK [A-Za-z0-9]` 는 소스에 박힌 진짜 열쇠를 찾는 것이다. `client.go`의 `"KakaoAK "+c.apiKey` 는 뒤가 따옴표라 애초에 걸리지 않는다. 시험 파일은 뒤의 `grep -v`로 뺀다 — `client_test.go`가 인증 헤더를 확인하려면 `"KakaoAK test-key"` 문자열을 갖고 있어야 하고, `test-key`는 누가 봐도 가짜다.
 
 ## 남은 확인 (사람이 열쇠를 받은 뒤에 한다)
 
