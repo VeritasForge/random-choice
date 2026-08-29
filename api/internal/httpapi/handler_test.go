@@ -165,6 +165,19 @@ func TestNearbyWithoutFinderSaysNotConfigured(t *testing.T) {
 	}
 }
 
+func TestNearbyRejectsBadInputEvenWithoutFinder(t *testing.T) {
+	// 잘못된 요청은 호출자의 잘못이므로, 서버에 열쇠가 있든 없든 400으로 답해야 한다.
+	// 열쇠가 없다는 이유로 500을 돌려주면 책임을 잘못 돌리는 것이고,
+	// 설계 문서의 완료 조건도 열쇠 없이 이 400을 확인하도록 되어 있다.
+	rec := get(t, NewHandler(nil), "/api/v1/nearby?lat=999&lng=127.0")
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("응답 코드가 %d다. 400이어야 한다", rec.Code)
+	}
+	if got := decodeError(t, rec)["error"]; got != "invalid_coordinates" {
+		t.Errorf("오류 코드가 %q다. \"invalid_coordinates\"여야 한다", got)
+	}
+}
+
 func TestNearbyMapsQuotaExceeded(t *testing.T) {
 	rec := get(t, NewHandler(&fakeFinder{err: kakao.ErrQuotaExceeded}), "/api/v1/nearby?lat=37.5&lng=127.0")
 	if rec.Code != http.StatusTooManyRequests {

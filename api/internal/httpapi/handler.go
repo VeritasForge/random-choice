@@ -70,12 +70,6 @@ func NewHandler(finder PlaceFinder) http.Handler {
 }
 
 func handleNearby(w http.ResponseWriter, r *http.Request, finder PlaceFinder) {
-	if finder == nil {
-		writeError(w, http.StatusInternalServerError, "not_configured",
-			"서버에 카카오 열쇠가 설정되지 않았습니다.")
-		return
-	}
-
 	lat, lng, ok := parseCoordinates(r)
 	if !ok {
 		writeError(w, http.StatusBadRequest, "invalid_coordinates",
@@ -87,6 +81,16 @@ func handleNearby(w http.ResponseWriter, r *http.Request, finder PlaceFinder) {
 	if !ok {
 		writeError(w, http.StatusBadRequest, "invalid_radius",
 			"반경은 100m 이상 20000m 이하여야 합니다.")
+		return
+	}
+
+	// 요청 자체가 잘못됐는지를 먼저 가린 다음에 서버 설정을 본다.
+	// 잘못된 요청은 열쇠가 있든 없든 호출자의 잘못이라 400이어야 한다.
+	// 순서를 반대로 하면 열쇠가 없을 때는 잘못된 요청도 500(not_configured)으로
+	// 뭉뚱그려져 책임 소재가 흐려진다.
+	if finder == nil {
+		writeError(w, http.StatusInternalServerError, "not_configured",
+			"서버에 카카오 열쇠가 설정되지 않았습니다.")
 		return
 	}
 
