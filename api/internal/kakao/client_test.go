@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 )
 
 // pageJSON은 카카오 응답 한 페이지를 흉내 낸다.
@@ -289,8 +290,8 @@ func TestSearchRestaurantsAsksForEachPageInOrder(t *testing.T) {
 }
 
 func TestSearchRestaurantsGivesEveryPlaceItsOwnIdentity(t *testing.T) {
-	// 세 페이지를 합친 결과에 같은 가게가 두 번 들어 있으면
-	// 그 종류의 가게 수가 부풀어 추첨 확률이 뒤틀리고, 화면 목록에도 두 번 나온다.
+	// 세 페이지를 합친 결과에 같은 가게가 두 번 들어 있으면 화면 목록에 두 번 나오고
+	// (React key도 겹친다), 종류별 가게 수가 실제보다 부풀어 보인다.
 	var calls int
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		calls++
@@ -417,5 +418,96 @@ func TestSearchRestaurantsDoesNotLeakCoordinatesInError(t *testing.T) {
 		if strings.Contains(err.Error(), secret) {
 			t.Errorf("오류 문자열에 %q가 들어 있다: %v", secret, err)
 		}
+	}
+}
+
+func TestSearchRestaurantsKeepsPlacesWithoutIdentifier(t *testing.T) {
+	// 식별자가 빈 건은 중복 판정을 할 수 없다. 하나로 뭉뚱그리면 멀쩡한 가게가
+	// 조용히 사라지고, 결과가 적게 나오는 이유를 아무도 추적하지 못한다.
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, `{"documents": [
+			{"id": "", "place_name": "이름없는집1", "category_name": "음식점 > 분식",
+			 "road_address_name": "주소", "place_url": "", "x": "127.0", "y": "37.5", "distance": "10"},
+			{"id": "", "place_name": "이름없는집2", "category_name": "음식점 > 분식",
+			 "road_address_name": "주소", "place_url": "", "x": "127.0", "y": "37.5", "distance": "20"},
+			{"id": "1", "place_name": "멀쩡한집", "category_name": "음식점 > 분식",
+			 "road_address_name": "주소", "place_url": "", "x": "127.0", "y": "37.5", "distance": "30"}
+		], "meta": {"is_end": true}}`)
+	}))
+	defer server.Close()
+
+	client := NewClientWithBaseURL("test-key", server.URL, server.Client())
+	places, err := client.SearchRestaurants(context.Background(), 37.49, 127.02, 500)
+	if err != nil {
+		t.Fatalf("오류가 나면 안 된다: %v", err)
+	}
+	if len(places) != 3 {
+		t.Errorf("%d곳을 받았다. 식별자가 비어도 버리지 않아 3곳이어야 한다", len(places))
+	}
+}
+
+func TestSearchRestaurantsStopsAtItsOwnTimeLimit(t *testing.T) {
+	// 조회 전체 상한이 실제로 도는지 확인한다. 상한이 사라지거나 늘어나면
+	// 카카오가 느린 날 브라우저는 로딩 화면에 갇히고 서버는 연결을 붙잡고 있는다.
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		<-r.Context().Done() // 상한이 끊어 줄 때까지 응답하지 않는다
+	}))
+	defer server.Close()
+
+	client := NewClientWithBaseURL("test-key", server.URL, server.Client())
+	client.searchTimeout = 50 * time.Millisecond
+
+	start := time.Now()
+	_, err := client.SearchRestaurants(context.Background(), 37.49, 127.02, 500)
+	elapsed := time.Since(start)
+
+	if !errors.Is(err, ErrUpstream) {
+		t.Errorf("상위 서비스 오류여야 한다. 받은 오류: %v", err)
+	}
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Errorf("시간 초과임을 errors.Is로 알아볼 수 있어야 한다. 받은 오류: %v", err)
+	}
+	if elapsed > 3*time.Second {
+		t.Errorf("%v가 걸렸다. 상한(50ms)에서 끊겼어야 한다", elapsed)
+	}
+}
+
+func TestSearchRestaurantsReportsCancellationAsSuch(t *testing.T) {
+	// 사용자가 창을 닫으면 요청이 취소된다. 부르는 쪽이 그것을 카카오 장애와
+	// 구분할 수 있어야 흔한 정상 동작이 오류 로그를 채우지 않는다.
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		<-r.Context().Done()
+	}))
+	defer server.Close()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	go func() {
+		time.Sleep(50 * time.Millisecond)
+		cancel()
+	}()
+
+	client := NewClientWithBaseURL("test-key", server.URL, server.Client())
+	_, err := client.SearchRestaurants(ctx, 37.49, 127.02, 500)
+	if !errors.Is(err, context.Canceled) {
+		t.Errorf("취소임을 errors.Is로 알아볼 수 있어야 한다. 받은 오류: %v", err)
+	}
+}
+
+func TestSearchRestaurantsIncludesKakaoErrorBody(t *testing.T) {
+	// 상태 코드만 남기면 원인 후보가 넓은 채로 남는다. 좌표를 로그에 남기지 않기로 했으므로
+	// 요청을 재구성할 수도 없어, 카카오가 준 설명이 유일한 단서다.
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusBadRequest)
+		fmt.Fprint(w, `{"errorType":"InvalidArgument","message":"radius is out of range"}`)
+	}))
+	defer server.Close()
+
+	client := NewClientWithBaseURL("test-key", server.URL, server.Client())
+	_, err := client.SearchRestaurants(context.Background(), 37.49, 127.02, 500)
+	if !errors.Is(err, ErrUpstream) {
+		t.Fatalf("상위 서비스 오류여야 한다. 받은 오류: %v", err)
+	}
+	if !strings.Contains(err.Error(), "radius is out of range") {
+		t.Errorf("카카오가 준 설명이 오류에 담겨야 한다. 받은 오류: %v", err)
 	}
 }

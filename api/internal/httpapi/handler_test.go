@@ -3,6 +3,7 @@ package httpapi
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"math"
 	"net/http"
 	"net/http/httptest"
@@ -345,5 +346,48 @@ func TestReadyzReflectsWhetherLookupsCanWork(t *testing.T) {
 	}
 	if rec := get(t, NewHandler(&fakeFinder{}), "/readyz"); rec.Code != http.StatusOK {
 		t.Errorf("열쇠가 있을 때 readyz가 %d다. 200이어야 한다", rec.Code)
+	}
+}
+
+func TestStatusEndpointsForbidCaching(t *testing.T) {
+	// 상태 확인이 캐시되면 이미 죽은 서버가 계속 살아 있다고 답하는 셈이 된다.
+	for _, target := range []string{"/healthz", "/readyz"} {
+		rec := get(t, NewHandler(&fakeFinder{}), target)
+		if got := rec.Header().Get("Cache-Control"); got != "no-store" {
+			t.Errorf("%s의 Cache-Control이 %q다. \"no-store\"여야 한다", target, got)
+		}
+		if got := rec.Header().Get("Content-Type"); got == "" {
+			t.Errorf("%s에 Content-Type이 없다", target)
+		}
+	}
+}
+
+func TestNearbyMapsItsOwnTimeLimit(t *testing.T) {
+	// 우리가 정한 조회 상한에 걸린 것은 카카오가 오류를 준 것과 다르다.
+	// 502(상대가 잘못됨)가 아니라 504(우리가 기다리기를 그만둠)여야 하고,
+	// 화면도 "지금 서버가 붐빈다"는 다른 문구를 보여 준다.
+	finder := &fakeFinder{err: fmt.Errorf("%w: %w", kakao.ErrUpstream, context.DeadlineExceeded)}
+	rec := get(t, NewHandler(finder), "/api/v1/nearby?lat=37.5&lng=127.0")
+	if rec.Code != http.StatusGatewayTimeout {
+		t.Errorf("응답 코드가 %d다. 504여야 한다", rec.Code)
+	}
+	if got := decodeError(t, rec)["error"]; got != "timeout" {
+		t.Errorf("오류 코드가 %q다. \"timeout\"이어야 한다", got)
+	}
+}
+
+func TestNearbyStaysQuietWhenTheClientHangsUp(t *testing.T) {
+	// 사용자가 창을 닫는 것은 흔한 정상 동작이다. 이미 끊긴 연결에 응답을 쓰지 않고,
+	// 카카오 장애와 같은 등급으로 로그를 남기지도 않아야 한다.
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/nearby?lat=37.5&lng=127.0", nil).WithContext(ctx)
+	rec := httptest.NewRecorder()
+	finder := &fakeFinder{err: fmt.Errorf("%w: %w", kakao.ErrUpstream, context.Canceled)}
+	NewHandler(finder).ServeHTTP(rec, req)
+
+	if rec.Body.Len() != 0 {
+		t.Errorf("끊긴 연결에 본문을 썼다: %s", rec.Body.String())
 	}
 }

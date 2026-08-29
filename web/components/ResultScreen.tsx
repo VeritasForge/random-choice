@@ -31,13 +31,19 @@ export default function ResultScreen({ cuisine, places, onRestart }: Props) {
       </div>
 
       <ul className="flex w-full flex-col gap-2">
-        {places.map((place) => (
-          <li key={place.id}>
+        {/*
+          key에 순번을 섞는 이유: 조회기는 식별자가 빈 가게를 일부러 살려 둔다
+          (api/internal/kakao/client.go). 그런 가게가 같은 종류에 둘 이상이면
+          key가 빈 문자열로 겹쳐, React가 목록을 다시 그릴 때 엉뚱한 항목을 재사용한다.
+        */}
+        {places.map((place, index) => (
+          <li key={place.id || `unknown-${index}`}>
             {/*
               카카오가 place_url을 비워 보내는 경우가 있다(시험 자료에도 그 경우가 있다).
-              빈 문자열을 href에 넣으면 브라우저가 "현재 문서"로 해석해, 누르는 순간
-              지금 보고 있는 결과를 잃고 앱이 새 탭에 다시 열린다. 주소가 없으면
-              링크가 아니라 그냥 목록 항목으로 그린다.
+              빈 문자열을 href에 넣으면 브라우저가 "현재 문서"로 해석한다. 새 탭에서
+              열리므로 지금 보고 있는 결과를 잃지는 않지만, 이 앱이 처음부터 다시
+              열릴 뿐이라 사용자에게는 고장으로 보인다. 주소가 없으면 링크가 아니라
+              그냥 목록 항목으로 그린다.
             */}
             {place.placeUrl ? (
               <a

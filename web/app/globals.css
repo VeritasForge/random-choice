@@ -20,9 +20,9 @@
 }
 
 /*
-  font-family를 여기서 정하지 않는다. 정하면 layout.tsx가 불러온 Geist가
+  font-family에 구체적인 글꼴 이름을 박지 않는다. 박으면 layout.tsx가 불러온 Geist가
   이 규칙에 덮여, 글꼴 파일만 내려받고 화면에는 쓰이지 않는다.
-  Tailwind가 --font-sans(위 @theme inline에서 Geist에 연결)로 본문 글꼴을 정한다.
+  여기서는 위 @theme inline이 Geist에 연결해 둔 --font-sans만 가리킨다.
 */
 body {
   background: var(--background);

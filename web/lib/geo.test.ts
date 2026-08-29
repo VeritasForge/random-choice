@@ -74,4 +74,9 @@ describe("getCurrentPosition", () => {
     expect(stub.lastOptions()?.timeout).toBe(POSITION_TIMEOUT_MS);
     expect(Number.isFinite(stub.lastOptions()?.timeout)).toBe(true);
   });
+  it("시간 제한이 실내에서 쓸 만한 크기다", () => {
+    // 제한이 있는지만 보면 값을 1ms로 줄이는 실수가 초록불로 통과한다.
+    // 그러면 신호가 약한 실내에서 위치 조회가 늘 실패해 사용자가 시작 화면에서 막힌다.
+    expect(POSITION_TIMEOUT_MS).toBeGreaterThanOrEqual(5_000);
+  });
 });

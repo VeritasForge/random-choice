@@ -81,6 +81,9 @@ export default function Home() {
       // 어느 쪽도 아닌 오류는 우리가 예상하지 못한 것이므로, 원본을 콘솔에 남긴다 —
       // 남기지 않으면 사용자에게는 일반 안내만 뜨고 개발자에게는 단서가 하나도 없다.
       if (error instanceof NearbyError) {
+        // 상태 코드를 콘솔에 남긴다. 남기지 않으면 "프록시가 목적지에 못 닿았다"와
+        // "서버가 스스로 500을 냈다"의 구분이 던져진 다음 프레임에서 사라진다.
+        console.error("[start] 조회 실패", error.code, error.status);
         setView({ kind: "error", code: error.code, message: error.message, radius });
         return;
       }
@@ -177,7 +180,13 @@ export default function Home() {
         <Notice
           title={notice.title}
           description={notice.description}
-          actions={[{ label: "다시 시도", onClick: () => start(view.radius) }]}
+          // 안내 문구가 "다시 시도해도 같은 결과"라고 말하는 오류에까지 다시 시도
+          // 버튼만 보여 주면, 방금 고친 빈 결과 화면과 같은 막다른 길이 된다.
+          actions={[
+            notice.retryable
+              ? { label: "다시 시도", onClick: () => start(view.radius) }
+              : { label: "처음부터 다시", onClick: () => setView({ kind: "start" }) },
+          ]}
         />
       )}
     </main>

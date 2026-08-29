@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { fetchNearby, NearbyError } from "./api";
+import { fetchNearby, NearbyError, REQUEST_TIMEOUT_MS } from "./api";
 
 function respondWith(status: number, body: unknown) {
   vi.stubGlobal(
@@ -95,7 +95,17 @@ describe("fetchNearby", () => {
   it("200인데 모양이 다르면 malformed_response로 던진다", async () => {
     // 검사 없이 통과시키면 계약 위반이 여기서 멈추지 않고, 한참 뒤 화면이 그 값을
     // 쓰는 자리에서 TypeError로 터진다. 그러면 원인과 증상이 떨어져 진단이 어려워진다.
-    for (const body of [{}, { cuisines: [] }, { places: [] }, { cuisines: {}, places: [] }, []]) {
+    for (const body of [
+      {},
+      { cuisines: [] },
+      { places: [] },
+      { cuisines: {}, places: [] },
+      [],
+      // 원소까지 보지 않으면 아래 두 가지가 통과한다. 그러면 화면은 오류 없이
+      // 글자 없는 후보 버튼을 그리고, 눌러도 아무 가게가 없는 화면으로 끝난다.
+      { cuisines: ["한식"], places: [] },
+      { cuisines: [{ name: "한식", count: 1 }], places: [{ name: "가게" }] },
+    ]) {
       respondWith(200, body);
       await expect(fetchNearby(37.5, 127.0, 500)).rejects.toMatchObject({
         code: "malformed_response",
@@ -130,5 +140,55 @@ describe("fetchNearby", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+  it("헤더는 왔는데 본문이 멈춰도 timeout으로 던진다", async () => {
+    // 상한을 fetch에만 걸면 헤더가 도착하는 순간 풀린다. 그러면 본문 스트림이
+    // 멈췄을 때 response.json()이 영영 끝나지 않고, 화면은 "주변을 살펴보는 중…"에
+    // 갇힌 채 버튼도 눌리지 않아 새로고침 말고는 빠져나갈 길이 없다.
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_url: string, init?: { signal?: AbortSignal }) => {
+        const stream = new ReadableStream({
+          start(controller) {
+            // 헤더와 함께 본문 앞부분만 오고 그대로 멈춘 상황
+            controller.enqueue(new TextEncoder().encode('{"cuisines":'));
+            init?.signal?.addEventListener("abort", () =>
+              controller.error(new DOMException("Aborted", "AbortError")),
+            );
+          },
+        });
+        return new Response(stream, {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }),
+    );
+    vi.useFakeTimers();
+    try {
+      const pending = fetchNearby(37.5, 127.0, 500);
+      const assertion = expect(pending).rejects.toMatchObject({ code: "timeout" });
+      await vi.advanceTimersByTimeAsync(REQUEST_TIMEOUT_MS);
+      await assertion;
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("성공하면 상한 타이머를 남기지 않는다", async () => {
+    // 타이머를 정리하지 않으면 요청이 끝난 뒤에도 상한이 살아 있다.
+    vi.useFakeTimers();
+    try {
+      respondWith(200, { cuisines: [], places: [] });
+      await fetchNearby(37.5, 127.0, 500);
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("상한이 서버 쪽 조회 상한보다 넉넉하다", () => {
+    // 서버는 카카오 조회 전체를 12초에서 끊는다(api/internal/kakao/client.go).
+    // 화면 상한이 그보다 짧으면 서버가 정상으로 답할 요청까지 우리가 먼저 포기한다.
+    expect(REQUEST_TIMEOUT_MS).toBeGreaterThan(12_000);
   });
 });

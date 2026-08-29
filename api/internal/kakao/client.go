@@ -3,10 +3,12 @@
 package kakao
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"math"
 	"net/http"
@@ -27,11 +29,17 @@ const (
 	pageSize       = 15
 	maxPages       = 3
 	requestTimeout = 5 * time.Second
-	// searchTimeout은 세 페이지를 합친 전체 상한이다.
+	// defaultSearchTimeout은 세 페이지를 합친 전체 상한이다.
 	// 페이지마다 5초를 따로 세면 최악 15초가 걸리는데, 그동안 브라우저는
 	// "주변을 살펴보는 중…"에 갇히고 서버는 연결과 고루틴을 붙잡고 있다.
 	// 한 조회가 전체로 얼마나 걸릴 수 있는지를 한곳에서 정한다.
-	searchTimeout = 12 * time.Second
+	//
+	// 이 값은 다른 두 곳의 근거가 된다 — 서버의 WriteTimeout·종료 대기(cmd/server/main.go)와
+	// 화면의 요청 상한(web/lib/api.ts). 바꾸면 그 두 곳도 함께 봐야 한다.
+	defaultSearchTimeout = 12 * time.Second
+	// errorBodyLimit은 카카오 오류 응답에서 읽어 둘 본문의 최대 길이다.
+	// 원인을 남기되 로그가 폭주하지 않을 만큼만 자른다.
+	errorBodyLimit = 512
 )
 
 var (
@@ -63,20 +71,29 @@ type Client struct {
 	apiKey  string
 	baseURL string
 	http    *http.Client
+	// searchTimeout은 한 조회 전체의 상한이다. 시험에서 짧게 바꿔 쓸 수 있도록
+	// 상수가 아니라 필드로 둔다 — 상수면 상한이 실제로 도는지 확인할 방법이 없다.
+	searchTimeout time.Duration
 }
 
 // NewClient는 실제 카카오를 가리키는 조회기를 만든다.
 func NewClient(apiKey string) *Client {
 	return &Client{
-		apiKey:  apiKey,
-		baseURL: defaultBaseURL,
-		http:    &http.Client{Timeout: requestTimeout},
+		apiKey:        apiKey,
+		baseURL:       defaultBaseURL,
+		http:          &http.Client{Timeout: requestTimeout},
+		searchTimeout: defaultSearchTimeout,
 	}
 }
 
 // NewClientWithBaseURL은 시험에서 가짜 서버를 가리키게 할 때 쓴다.
 func NewClientWithBaseURL(apiKey, baseURL string, hc *http.Client) *Client {
-	return &Client{apiKey: apiKey, baseURL: baseURL, http: hc}
+	return &Client{
+		apiKey:        apiKey,
+		baseURL:       baseURL,
+		http:          hc,
+		searchTimeout: defaultSearchTimeout,
+	}
 }
 
 type document struct {
@@ -102,13 +119,14 @@ type searchResponse struct {
 // SearchRestaurants는 좌표 주변의 음식점을 가까운 순으로 돌려준다.
 // 한 조회의 상한은 pageSize × maxPages = 45곳이다.
 func (c *Client) SearchRestaurants(ctx context.Context, lat, lng float64, radius int) ([]Place, error) {
-	ctx, cancel := context.WithTimeout(ctx, searchTimeout)
+	ctx, cancel := context.WithTimeout(ctx, c.searchTimeout)
 	defer cancel()
 
 	places := make([]Place, 0, pageSize*maxPages)
 	// 카카오가 페이지 경계에서 같은 가게를 두 번 주는 경우를 대비한다.
-	// 그대로 두면 그 종류의 가게 수가 부풀어 추첨 확률이 뒤틀리고,
-	// 화면에서는 같은 가게가 목록에 두 번 나온다.
+	// 그대로 두면 결과 목록에 같은 가게가 두 번 나오고(화면의 React key도 겹친다),
+	// 종류별 가게 수가 실제보다 부풀어 보인다.
+	// (추첨 자체는 종류 "이름" 집합에서 균등하게 뽑으므로 가게 수와 무관하다 — web/lib/pick.ts 참조)
 	seen := make(map[string]struct{}, pageSize*maxPages)
 
 	for page := 1; page <= maxPages; page++ {
@@ -120,11 +138,13 @@ func (c *Client) SearchRestaurants(ctx context.Context, lat, lng float64, radius
 			return nil, err
 		}
 		for _, doc := range parsed.Documents {
-			place, ok := toPlace(doc)
-			if !ok {
+			place, badField := toPlace(doc)
+			if badField != "" {
 				// 조용히 버리지 않는다. 이런 응답이 오기 시작하면 알아야 한다.
+				// 값 자체(좌표)는 남기지 않고 어느 항목이 깨졌는지만 남긴다 —
+				// 가게 좌표는 사용자 반경 안에 있어 위치를 좁히는 단서가 되기 때문이다.
 				slog.Warn("카카오 응답 한 건을 해석하지 못해 건너뜁니다",
-					"id", doc.ID, "x", doc.X, "y", doc.Y, "distance", doc.Distance)
+					"id", doc.ID, "field", badField)
 				continue
 			}
 			// 식별자가 빈 건은 중복 판정을 할 수 없다. 하나로 뭉뚱그리면
@@ -144,6 +164,22 @@ func (c *Client) SearchRestaurants(ctx context.Context, lat, lng float64, radius
 	return places, nil
 }
 
+// stripURL은 오류에서 요청 주소를 떼어 낸다.
+// net/url과 net/http는 실패를 *url.Error로 감싸는데 그 문자열에는 요청 주소가
+// 통째로 들어 있고, 그 주소의 x·y가 곧 사용자의 좌표다. 안쪽 오류만 남겨
+// 좌표가 로그로 새지 않게 한다.
+//
+// 안쪽 오류를 %v가 아니라 %w로 감싼다. %v로 넣으면 문자열만 남아
+// errors.Is(err, context.Canceled) 같은 판정이 불가능해지고,
+// 그러면 부르는 쪽이 "사용자가 창을 닫은 것"과 "카카오가 죽은 것"을 구분하지 못한다.
+func stripURL(err error) error {
+	var urlErr *url.Error
+	if errors.As(err, &urlErr) {
+		return urlErr.Err
+	}
+	return err
+}
+
 func (c *Client) fetchPage(ctx context.Context, lat, lng float64, radius, page int) (*searchResponse, error) {
 	query := url.Values{}
 	query.Set("category_group_code", restaurantCode)
@@ -157,19 +193,14 @@ func (c *Client) fetchPage(ctx context.Context, lat, lng float64, radius, page i
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+searchPath+"?"+query.Encode(), nil)
 	if err != nil {
-		return nil, fmt.Errorf("%w: 요청을 만들지 못했습니다: %v", ErrUpstream, err)
+		// 주소를 만들지 못한 경우에도 오류에 그 주소가 담긴다.
+		return nil, fmt.Errorf("%w: 요청을 만들지 못했습니다: %w", ErrUpstream, stripURL(err))
 	}
 	req.Header.Set("Authorization", "KakaoAK "+c.apiKey)
 
 	res, err := c.http.Do(req)
 	if err != nil {
-		// http.Client.Do는 *url.Error를 돌려주고, 그 문자열에는 요청 주소가 통째로 들어 있다.
-		// 그 주소의 x·y가 곧 사용자의 좌표이므로, 안쪽 오류만 옮겨 좌표가 로그로 새지 않게 한다.
-		var urlErr *url.Error
-		if errors.As(err, &urlErr) {
-			return nil, fmt.Errorf("%w: %v", ErrUpstream, urlErr.Err)
-		}
-		return nil, fmt.Errorf("%w: %v", ErrUpstream, err)
+		return nil, fmt.Errorf("%w: %w", ErrUpstream, stripURL(err))
 	}
 	defer res.Body.Close()
 
@@ -180,20 +211,26 @@ func (c *Client) fetchPage(ctx context.Context, lat, lng float64, radius, page i
 		return nil, fmt.Errorf("%w: 응답 코드 %d", ErrInvalidKey, res.StatusCode)
 	}
 	if res.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("%w: 응답 코드 %d", ErrUpstream, res.StatusCode)
+		// 카카오는 실패 이유를 본문에 담아 준다. 상태 코드만 남기면 원인 후보가 넓은 채로
+		// 남고, 좌표를 로그에 남기지 않기로 했으므로 요청을 그대로 재구성할 수도 없다.
+		// 본문에는 사용자 좌표가 들어 있지 않으므로 앞부분만 잘라 함께 남긴다.
+		snippet, _ := io.ReadAll(io.LimitReader(res.Body, errorBodyLimit))
+		return nil, fmt.Errorf("%w: 응답 코드 %d: %s",
+			ErrUpstream, res.StatusCode, bytes.TrimSpace(snippet))
 	}
 
 	var parsed searchResponse
 	if err := json.NewDecoder(res.Body).Decode(&parsed); err != nil {
-		return nil, fmt.Errorf("%w: 응답을 해석하지 못했습니다: %v", ErrUpstream, err)
+		return nil, fmt.Errorf("%w: 응답을 해석하지 못했습니다: %w", ErrUpstream, err)
 	}
 	return &parsed, nil
 }
 
 // toPlace는 카카오의 응답 한 건을 우리 형태로 옮긴다.
 // 카카오는 좌표와 거리를 문자열로 주므로 여기서 숫자로 바꾼다.
+// 두 번째 반환값은 해석하지 못한 항목의 이름이고, 전부 성공하면 빈 문자열이다.
 //
-// 바꾸지 못하거나 실수로 표현할 수 없는 값이면 그 한 건을 버린다(두 번째 반환값 false).
+// 바꾸지 못하거나 실수로 표현할 수 없는 값이면 그 한 건을 버린다.
 // 버리는 이유가 두 가지다.
 //   - strconv.ParseFloat는 "NaN"과 "Inf"를 오류 없이 받아들인다. 그 값은 JSON으로
 //     표현할 수 없어 응답을 만드는 단계에서 실패한다. 응답 조립 쪽에도 방어가 있지만
@@ -203,18 +240,18 @@ func (c *Client) fetchPage(ctx context.Context, lat, lng float64, radius, page i
 //     "가장 가까운 집"으로 표시된다. 0m는 사실이 아니다.
 //
 // 한 건을 버리는 것이 45곳 전체를 실패시키거나 거짓을 보여주는 것보다 낫다.
-func toPlace(doc document) (Place, bool) {
+func toPlace(doc document) (Place, string) {
 	lng, ok := finiteFloat(doc.X)
 	if !ok {
-		return Place{}, false
+		return Place{}, "x"
 	}
 	lat, ok := finiteFloat(doc.Y)
 	if !ok {
-		return Place{}, false
+		return Place{}, "y"
 	}
 	distance, err := strconv.Atoi(doc.Distance)
 	if err != nil || distance < 0 {
-		return Place{}, false
+		return Place{}, "distance"
 	}
 
 	address := doc.RoadAddress
@@ -231,7 +268,7 @@ func toPlace(doc document) (Place, bool) {
 		Lat:          lat,
 		Lng:          lng,
 		Distance:     distance,
-	}, true
+	}, ""
 }
 
 // finiteFloat는 문자열을 실수로 바꾸되, NaN과 무한대는 거부한다.

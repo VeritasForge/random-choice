@@ -68,8 +68,7 @@ func NewHandler(finder PlaceFinder) http.Handler {
 		handleNearby(w, r, finder)
 	})
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte("ok"))
+		writeOK(w)
 	})
 	// readyz는 "이 서버에 요청을 보내도 되는가"에 답한다.
 	// healthz(프로세스가 살아 있는가)와 나누는 이유: 열쇠가 없는 서버도 프로세스는
@@ -81,8 +80,7 @@ func NewHandler(finder PlaceFinder) http.Handler {
 				"서버에 카카오 열쇠가 설정되지 않았습니다.")
 			return
 		}
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte("ok"))
+		writeOK(w)
 	})
 	return mux
 }
@@ -114,6 +112,22 @@ func handleNearby(w http.ResponseWriter, r *http.Request, finder PlaceFinder) {
 
 	found, err := finder.SearchRestaurants(r.Context(), lat, lng, radius)
 	if err != nil {
+		// 사용자가 창을 닫거나 브라우저가 요청을 취소한 경우다. 흔한 정상 동작이므로
+		// 카카오 장애와 같은 등급(Error)으로 쌓이면 진짜 실패가 그 잡음에 묻힌다.
+		// 이미 끊긴 연결에 응답을 쓰려 하지도 않는다.
+		if r.Context().Err() != nil {
+			slog.Info("요청이 취소되었습니다", "radius", radius)
+			return
+		}
+		// 우리가 정한 조회 상한(kakao 패키지의 searchTimeout)에 걸린 경우다.
+		// 카카오가 오류를 준 것이 아니라 우리가 기다리기를 그만둔 것이므로 504가 맞고,
+		// 화면도 "지금 서버가 붐빈다"는 다른 문구를 보여 준다.
+		if errors.Is(err, context.DeadlineExceeded) {
+			slog.Warn("조회가 제한 시간 안에 끝나지 않았습니다", "radius", radius)
+			writeError(w, http.StatusGatewayTimeout, "timeout",
+				"조회가 제한 시간 안에 끝나지 않았습니다.")
+			return
+		}
 		// 아래 로그에 좌표를 남기지 않는다. 실패는 자주 나는데 좌표는 이 서비스가
 		// 다루는 유일한 개인 식별 값이라, 남기면 "누가 언제 어디 있었는지"가
 		// 로그에 쌓인다. 저장소를 두지 않기로 한 설계와도 어긋난다.
@@ -207,10 +221,18 @@ func buildResponse(found []kakao.Place) nearbyResponse {
 		})
 	}
 
-	if dropped > 0 && len(places) == 0 {
-		// 전량 탈락은 카카오가 분류 문자열 형식을 바꿨다는 신호일 수 있다.
+	switch {
+	case len(found) == 0:
+		// 카카오가 한 곳도 주지 않았다. 정말 한적한 곳일 수도 있지만, 열쇠에 권한이 없거나
+		// 반경·분류 코드가 조용히 무시되는 상황일 수도 있다. 사용자에게는 두 경우가
+		// 똑같이 "음식점이 없어요"로 보이므로 서버 쪽에는 흔적을 남긴다.
+		// 정상 결과일 수 있으니 Error가 아니라 Info다 — 이 줄이 몰려 찍히면 전면 장애다.
+		slog.Info("카카오가 한 곳도 주지 않았습니다")
+	case len(places) == 0:
+		// 가게는 받았는데 하나도 분류하지 못했다. 카카오가 분류 문자열 형식을
+		// 바꿨다는 신호일 수 있다.
 		slog.Error("음식 종류를 하나도 뽑지 못했습니다", "dropped", dropped)
-	} else if dropped > 0 {
+	case dropped > 0:
 		slog.Warn("음식 종류를 뽑지 못한 가게를 제외했습니다",
 			"dropped", dropped, "total", len(found))
 	}
@@ -254,6 +276,18 @@ func writeRaw(w http.ResponseWriter, status int, body []byte) {
 	w.Header().Set("Cache-Control", "no-store")
 	w.WriteHeader(status)
 	if _, err := w.Write(body); err != nil {
+		slog.Error("응답을 쓰지 못했습니다", "error", err)
+	}
+}
+
+// writeOK는 상태 확인 경로의 성공 응답이다.
+// JSON이 아니지만 캐시 금지는 다른 응답과 똑같이 붙인다 — 상태 확인이 캐시되면
+// 이미 죽은 서버가 계속 살아 있다고 답하는 셈이 된다.
+func writeOK(w http.ResponseWriter) {
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-store")
+	w.WriteHeader(http.StatusOK)
+	if _, err := w.Write([]byte("ok")); err != nil {
 		slog.Error("응답을 쓰지 못했습니다", "error", err)
 	}
 }

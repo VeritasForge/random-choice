@@ -5,8 +5,9 @@ import Notice from "@/components/Notice";
 
 /**
  * 화면을 그리는 도중 예외가 나면 Next.js가 이 파일을 대신 보여 준다.
- * 이것이 없으면 사용자는 브라우저 기본 오류 화면만 보고 앱 전체가 죽는다 —
- * 무슨 일이 났는지도, 되돌아갈 길도 없다.
+ * 이것이 없으면 Next.js의 영어 기본 화면("This page couldn't load" + Reload·Back)이 뜬다.
+ * 한국어 안내와 이 앱의 생김새, 그리고 전체 새로고침 없이 다시 그리는 reset을
+ * 주려고 이 파일을 둔다.
  *
  * 이벤트 처리 중에 난 오류는 page.tsx의 try/catch가 맡는다.
  * 여기는 그 그물에 걸리지 않는 렌더 경로 전용이다.
