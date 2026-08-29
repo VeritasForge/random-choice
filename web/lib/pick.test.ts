@@ -55,6 +55,12 @@ describe("pickAvoiding", () => {
     const got = pickAvoiding(["a", "b", "c", "d"], 3, ["a", "b", "c"], zero);
     expect(new Set(got).size).toBe(3);
   });
+
+  it("겹치지 않는 것을 먼저 쓰고, 모자란 만큼만 직전 후보에서 가져온다", () => {
+    // 이 시험이 보충 대상을 고정한다. 보충을 "직전 후보"가 아니라 "전체 목록"에서
+    // 가져오도록 바꾸면 "a"가 두 번 뽑혀 결과가 달라진다.
+    expect(pickAvoiding(["a", "b", "c", "d"], 3, ["c", "d"], zero)).toEqual(["a", "b", "c"]);
+  });
 });
 
 describe("pickOne", () => {
@@ -64,5 +70,11 @@ describe("pickOne", () => {
 
   it("빈 목록이면 아무것도 고르지 못한다", () => {
     expect(pickOne([], zero)).toBeUndefined();
+  });
+
+  it("난수의 양 끝에서도 올바른 항목을 고른다", () => {
+    expect(pickOne(["a", "b", "c"], () => 0)).toBe("a");
+    // Math.random이 돌려줄 수 있는 1 미만의 가장 큰 값
+    expect(pickOne(["a", "b", "c"], () => 0.9999999999999999)).toBe("c");
   });
 });

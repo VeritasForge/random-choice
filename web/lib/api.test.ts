@@ -72,4 +72,14 @@ describe("fetchNearby", () => {
       code: "network_error",
     });
   });
+
+  it("200인데 본문이 JSON이 아니면 malformed_response로 던진다", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response("", { status: 200 })),
+    );
+    await expect(fetchNearby(37.5, 127.0, 500)).rejects.toMatchObject({
+      code: "malformed_response",
+    });
+  });
 });

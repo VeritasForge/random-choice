@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import CandidateScreen from "@/components/CandidateScreen";
 import Notice from "@/components/Notice";
 import ResultScreen from "@/components/ResultScreen";
@@ -57,6 +57,10 @@ const ERROR_TEXT: Record<string, { title: string; description: string }> = {
     title: "서버에 연결하지 못했어요",
     description: "인터넷 연결을 확인한 뒤 다시 시도해 주세요.",
   },
+  malformed_response: {
+    title: "서버 응답을 읽지 못했어요",
+    description: "잠시 후 다시 시도해 주세요.",
+  },
 };
 
 const FALLBACK_ERROR = {
@@ -64,8 +68,29 @@ const FALLBACK_ERROR = {
   description: "잠시 후 다시 시도해 주세요.",
 };
 
+/**
+ * 화면 단위 이름. start와 loading은 같은 화면의 두 상태이므로 하나로 본다 —
+ * 로딩이 시작될 때 포커스를 옮기면 방금 누른 버튼에서 포커스를 빼앗게 된다.
+ */
+function screenNameOf(view: View): string {
+  return view.kind === "loading" ? "start" : view.kind;
+}
+
 export default function Home() {
   const [view, setView] = useState<View>({ kind: "start" });
+  const mainRef = useRef<HTMLElement>(null);
+  const screenName = screenNameOf(view);
+  const shownScreen = useRef(screenName);
+
+  // 화면이 바뀌면 포커스를 새 화면 맨 위로 옮긴다. 옮기지 않으면 키보드·화면 낭독기
+  // 사용자는 사라진 요소에 포커스를 둔 채 남겨지고, 무엇이 그 자리를 대신했는지 듣지 못한다.
+  useEffect(() => {
+    if (shownScreen.current === screenName) {
+      return;
+    }
+    shownScreen.current = screenName;
+    mainRef.current?.focus();
+  }, [screenName]);
 
   async function start(radius: number) {
     setView({ kind: "loading" });
@@ -116,10 +141,17 @@ export default function Home() {
   }
 
   return (
-    <main className="mx-auto flex min-h-dvh w-full max-w-md flex-col items-center justify-center gap-8 p-6">
-      {view.kind === "start" && <StartScreen onStart={() => start(DEFAULT_RADIUS)} loading={false} />}
-
-      {view.kind === "loading" && <StartScreen onStart={() => {}} loading />}
+    <main
+      ref={mainRef}
+      tabIndex={-1}
+      className="mx-auto flex min-h-dvh w-full max-w-md flex-col items-center justify-center gap-8 p-6 focus:outline-none"
+    >
+      {(view.kind === "start" || view.kind === "loading") && (
+        <StartScreen
+          onStart={() => start(DEFAULT_RADIUS)}
+          loading={view.kind === "loading"}
+        />
+      )}
 
       {view.kind === "candidates" && (
         <CandidateScreen

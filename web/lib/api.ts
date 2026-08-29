@@ -52,5 +52,9 @@ export async function fetchNearby(
     throw new NearbyError(code, message);
   }
 
-  return (await response.json()) as NearbyResult;
+  try {
+    return (await response.json()) as NearbyResult;
+  } catch {
+    throw new NearbyError("malformed_response", "서버 응답을 이해하지 못했습니다.");
+  }
 }

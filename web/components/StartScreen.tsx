@@ -20,7 +20,7 @@ export default function StartScreen({ onStart, loading }: Props) {
         브라우저가 그 버튼의 포커스를 떨어뜨린다. 키보드나 화면 낭독기를 쓰는 사람은
         자기 위치를 잃고, 무슨 일이 시작됐는지도 듣지 못한다.
         aria-disabled는 "지금은 누를 수 없음"만 알리고 포커스는 그대로 둔다.
-        실제로 눌리지 않게 하는 것은 아래 handleClick이 맡는다.
+        실제로 눌리지 않게 하는 것은 아래 onClick의 삼항 연산자가 맡는다.
       */}
       <button
         type="button"
