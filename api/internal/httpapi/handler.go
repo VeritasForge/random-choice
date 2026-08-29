@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"log/slog"
+	"math"
 	"net/http"
 	"sort"
 	"strconv"
@@ -111,14 +112,17 @@ func handleNearby(w http.ResponseWriter, r *http.Request, finder PlaceFinder) {
 }
 
 // parseCoordinates는 위도·경도를 읽는다. 하나라도 올바르지 않으면 false를 돌려준다.
+// NaN을 따로 걸러내는 이유: strconv.ParseFloat는 "nan"을 오류 없이 받아들이는데,
+// NaN은 어떤 비교에서도 false라서 범위 검사(-90..90)를 그냥 통과해 버린다.
+// 반대로 "inf"는 90보다 크다고 판정되어 범위 검사에 걸리므로 따로 볼 필요가 없다.
 func parseCoordinates(r *http.Request) (float64, float64, bool) {
 	query := r.URL.Query()
 	lat, err := strconv.ParseFloat(query.Get("lat"), 64)
-	if err != nil || lat < -90 || lat > 90 {
+	if err != nil || math.IsNaN(lat) || lat < -90 || lat > 90 {
 		return 0, 0, false
 	}
 	lng, err := strconv.ParseFloat(query.Get("lng"), 64)
-	if err != nil || lng < -180 || lng > 180 {
+	if err != nil || math.IsNaN(lng) || lng < -180 || lng > 180 {
 		return 0, 0, false
 	}
 	return lat, lng, true
