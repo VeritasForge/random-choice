@@ -39,3 +39,7 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Next.js가 dev 서버 실행 시 자동 생성하는 에이전트 안내 파일
+/AGENTS.md
+/CLAUDE.md
