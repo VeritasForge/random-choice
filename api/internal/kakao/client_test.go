@@ -670,12 +670,29 @@ func TestDescribeErrorBody(t *testing.T) {
 func TestDescribeErrorBodyDropsEchoedRequestValues(t *testing.T) {
 	// 카카오 형식이 맞다는 것이 "카카오가 답했다"는 증명은 아니다.
 	// 게이트웨이도 같은 모양으로 답하면서 우리가 보낸 값을 되울릴 수 있다.
-	body := []byte(`{"errorType":"UpstreamError","message":"failed for x=127.0276&y=37.4979"}`)
-	got := describeErrorBody(body, "test-key", "127.0276", "37.4979")
-	for _, secret := range []string{"127.0276", "37.4979"} {
-		if strings.Contains(got, secret) {
-			t.Errorf("설명에 %q가 남았다: %q", secret, got)
-		}
+	//
+	// 되울린 값을 하나씩만 담은 본문으로 시험한다. 셋을 한꺼번에 담으면
+	// 어느 하나만 걸러도 통째로 버려져, 나머지 둘이 실제로 감춰지는지 묶이지 않는다.
+	const key = "test-key"
+	const x = "127.0276"
+	const y = "37.4979"
+	tests := []struct {
+		name string
+		body string
+	}{
+		{"열쇠가 되울려 옴", `{"errorType":"UpstreamError","message":"rejected header KakaoAK ` + key + `"}`},
+		{"경도가 되울려 옴", `{"errorType":"UpstreamError","message":"failed for x=` + x + `"}`},
+		{"위도가 되울려 옴", `{"errorType":"UpstreamError","message":"failed for y=` + y + `"}`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := describeErrorBody([]byte(tt.body), key, x, y)
+			for _, secret := range []string{key, x, y} {
+				if strings.Contains(got, secret) {
+					t.Errorf("설명에 %q가 남았다: %q", secret, got)
+				}
+			}
+		})
 	}
 }
 
@@ -720,6 +737,49 @@ func TestSearchRestaurantsReportsTimeoutWhileReadingErrorBody(t *testing.T) {
 
 	_, err := client.SearchRestaurants(context.Background(), 37.49, 127.02, 500)
 	if !errors.Is(err, context.DeadlineExceeded) {
-		t.Errorf("시간 초과임을 errors.Is로 알아볼 수 있어야 한다. 받은 오류: %v", err)
+		t.Fatalf("시간 초과임을 errors.Is로 알아볼 수 있어야 한다. 받은 오류: %v", err)
+	}
+	// 아래 두 단언이 없으면, 느린 기계에서 헤더가 오기 전에 상한이 터져도 시험이 통과한다.
+	// 그러면 이 시험이 이름으로 내건 "본문을 읽다 걸린 경로"는 한 번도 실행되지 않는다.
+	if !strings.Contains(err.Error(), "본문을 읽지 못했습니다") {
+		t.Errorf("본문 읽기 단계에서 걸렸다는 것이 오류에 남아야 한다: %v", err)
+	}
+	if !strings.Contains(err.Error(), "502") {
+		t.Errorf("상태 코드가 오류에 남아야 한다: %v", err)
+	}
+}
+
+func TestSearchRestaurantsReportsPerPageTimeoutWhileReadingErrorBody(t *testing.T) {
+	// 위 시험의 짝이다. 이쪽은 조회 전체 상한이 아니라 페이지 한 건의 상한
+	// (운영에서 NewClient가 거는 http.Client.Timeout)이 터지는 경우다.
+	// 그때는 조회 전체 ctx가 아직 살아 있어 ctx.Err()가 nil이므로,
+	// readErr 자체를 함께 보지 않으면 시간 초과임을 알아보지 못하고 502로 답한다.
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Length", "4096")
+		w.WriteHeader(http.StatusBadGateway)
+		_, _ = w.Write([]byte("{"))
+		if flusher, ok := w.(http.Flusher); ok {
+			flusher.Flush()
+		}
+		<-r.Context().Done()
+	}))
+	defer server.Close()
+
+	client := NewClientWithBaseURL("test-key", server.URL,
+		&http.Client{Timeout: 100 * time.Millisecond})
+	// 조회 전체 상한은 넉넉히 둔다 — 페이지 한 건 상한만 터지게 하려는 것이다.
+	client.searchTimeout = 10 * time.Second
+
+	_, err := client.SearchRestaurants(context.Background(), 37.49, 127.02, 500)
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("시간 초과임을 errors.Is로 알아볼 수 있어야 한다. 받은 오류: %v", err)
+	}
+	if !strings.Contains(err.Error(), "502") {
+		t.Errorf("상태 코드가 오류에 남아야 한다: %v", err)
+	}
+	for _, secret := range []string{"37.49", "127.02", "test-key"} {
+		if strings.Contains(err.Error(), secret) {
+			t.Errorf("오류 문자열에 %q가 들어 있다: %v", secret, err)
+		}
 	}
 }

@@ -271,6 +271,23 @@ describe("응답 원소 검사 — 항목 하나씩", () => {
     "식별자가 숫자다": { id: 1 },
   };
 
+  const cuisineCases: Record<string, Record<string, unknown>> = {
+    "종류에 개수가 없다": { count: undefined },
+    "종류의 개수가 숫자가 아니다": { count: "1" },
+  };
+
+  for (const [label, patch] of Object.entries(cuisineCases)) {
+    it(`${label} — malformed_response`, async () => {
+      respondWith(200, {
+        cuisines: [{ ...GOOD_CUISINES[0], ...patch }],
+        places: [GOOD_PLACE],
+      });
+      await expect(fetchNearby(37.5, 127.0, 500)).rejects.toMatchObject({
+        code: "malformed_response",
+      });
+    });
+  }
+
   for (const [label, patch] of Object.entries(cases)) {
     it(`가게에 ${label} — malformed_response`, async () => {
       respondWith(200, {

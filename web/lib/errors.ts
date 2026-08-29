@@ -5,8 +5,12 @@ export type ErrorNotice = {
   description: string;
   /**
    * 다시 시도하면 결과가 달라질 수 있는가.
-   * false면 화면은 "다시 시도" 대신 "처음부터 다시"를 보여 준다 —
-   * 반드시 실패할 버튼을 권하면 사용자는 같은 자리를 맴돌게 된다.
+   *
+   * false면 화면은 버튼을 하나도 두지 않는다(web/app/page.tsx의 오류 화면) —
+   * 반드시 실패할 버튼을 권하면 사용자가 같은 자리를 맴돌기 때문이다.
+   * 그래서 false인 항목의 description은 **화면 밖에서 할 수 있는 일**만 가리켜야 한다.
+   * "처음부터 다시 해 주세요" 같은 화면 안 행동을 적으면, 그 행동을 할 버튼이 없어
+   * 안내 자체가 막다른 길이 된다. errors.test.ts가 이 규칙을 대조한다.
    */
   retryable: boolean;
 };
@@ -38,8 +42,7 @@ export const GEO_TEXT: Record<GeoErrorCode, ErrorNotice> = {
   },
   insecure_context: {
     title: "안전한 연결에서만 위치를 쓸 수 있어요",
-    description:
-      "주소가 https로 시작하는 곳에서 다시 열어 주세요. 지금 주소로는 다시 시도해도 같은 결과가 나옵니다.",
+    description: "주소가 https로 시작하는 곳에서 열어야 위치를 쓸 수 있습니다.",
     retryable: false,
   },
 };
@@ -64,19 +67,19 @@ const ERROR_TEXT: Record<string, ErrorNotice> = {
   },
   invalid_radius: {
     title: "찾는 범위가 올바르지 않아요",
-    description: "범위는 100m 이상 20km 이하여야 합니다. 처음부터 다시 해 주세요.",
+    description: "범위는 100m 이상 20km 이하여야 합니다. 페이지를 새로 열어 주세요.",
     retryable: false,
   },
   not_configured: {
     title: "서버 준비가 아직 안 됐어요",
     description:
-      "장소 조회에 필요한 열쇠가 서버에 설정되지 않았습니다. 다시 시도해도 같은 결과가 나옵니다.",
+      "장소 조회에 필요한 열쇠가 서버에 설정되지 않았습니다. 설정될 때까지는 조회할 수 없으니 관리자에게 알려 주세요.",
     retryable: false,
   },
   invalid_key: {
     title: "서버 설정에 문제가 있어요",
     description:
-      "장소 조회에 쓰는 열쇠가 거부되었습니다. 다시 시도해도 같은 결과가 나오니 관리자에게 알려 주세요.",
+      "장소 조회에 쓰는 열쇠가 거부되었습니다. 열쇠를 고치기 전에는 조회할 수 없으니 관리자에게 알려 주세요.",
     retryable: false,
   },
   internal_error: {

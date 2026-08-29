@@ -52,9 +52,17 @@ function isCuisine(value: unknown): value is Cuisine {
     return false;
   }
   const candidate = value as Cuisine;
-  // 이름이 빈 문자열이어도 안 된다. 서버는 종류를 만들지 못한 가게를 아예 빼므로
-  // 빈 이름은 계약 위반이고, 그대로 통과시키면 글자 없는 후보 버튼이 그려진다.
-  return typeof candidate.name === "string" && candidate.name.length > 0;
+  return (
+    // 이름이 빈 문자열이어도 안 된다. 서버는 종류를 만들지 못한 가게를 아예 빼므로
+    // 빈 이름은 계약 위반이고, 그대로 통과시키면 글자 없는 후보 버튼이 그려진다.
+    typeof candidate.name === "string" &&
+    candidate.name.length > 0 &&
+    // count는 지금 어느 화면도 그리지 않지만 타입이 number를 약속한다.
+    // 검사하지 않으면 나중에 "한식 12곳" 같은 표시를 붙이는 순간, 계약이 깨진 자리가
+    // 아니라 그 표시를 그리는 자리에서 터진다 — 이 파일이 막으려는 바로 그 모양이다.
+    typeof candidate.count === "number" &&
+    Number.isFinite(candidate.count)
+  );
 }
 
 function isPlace(value: unknown): value is Place {
@@ -72,6 +80,8 @@ function isPlace(value: unknown): value is Place {
     // 아래 넷은 결과 화면이 그대로 그리는 값이다. 빠지면 이름 없는 줄과
     // 단위만 남은 거리("m")가 오류 없이 표시된다
     // (React는 undefined 자식을 아무것도 그리지 않는다).
+    // lat·lng·phone은 어느 화면도 그리지 않으므로 검사하지 않는다 —
+    // 지도 표시를 붙이는 날 lat·lng를 여기 함께 더해야 한다.
     typeof candidate.name === "string" &&
     typeof candidate.roadAddress === "string" &&
     typeof candidate.placeUrl === "string" &&

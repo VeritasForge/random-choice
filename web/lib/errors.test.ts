@@ -54,6 +54,23 @@ describe("errorNotice", () => {
     }
   });
 
+  it("재시도가 소용없는 오류의 안내는 화면 밖에서 할 일만 가리킨다", () => {
+    // retryable이 false면 화면에 버튼이 하나도 없다. 그런데 안내 문구가
+    // "처음부터 다시"처럼 화면 안 행동을 지시하면, 그 행동을 할 버튼이 없어
+    // 안내 자체가 막다른 길이 된다.
+    const inPageActions = ["처음부터 다시", "다시 시도", "다시 뽑기", "넓히기"];
+    for (const code of KNOWN_ERROR_CODES) {
+      const notice = errorNotice(code);
+      if (notice.retryable) continue;
+      for (const phrase of inPageActions) {
+        expect(
+          notice.description.includes(phrase),
+          `${code}의 안내가 화면 안 행동("${phrase}")을 지시하는데 그 버튼이 없다`,
+        ).toBe(false);
+      }
+    }
+  });
+
   it("다시 시도해도 소용없는 오류는 재시도를 권하지 않는다", () => {
     // 이 표시가 뒤집히면 화면은 "다시 시도해도 같은 결과가 나옵니다"라고 말하면서
     // 다시 시도 버튼만 보여 주는 막다른 길이 된다.
