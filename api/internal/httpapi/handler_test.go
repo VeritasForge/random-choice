@@ -72,8 +72,8 @@ func TestNearbyReturnsCuisinesAndPlaces(t *testing.T) {
 	if len(body.Cuisines) != 2 {
 		t.Fatalf("음식 종류가 %d개다. 2개여야 한다: %+v", len(body.Cuisines), body.Cuisines)
 	}
-	if body.Cuisines[0].Name != "한식 > 육류,고기" || body.Cuisines[0].Count != 2 {
-		t.Errorf("첫 종류가 %+v다. 개수가 많은 \"한식 > 육류,고기\" 2개가 먼저여야 한다", body.Cuisines[0])
+	if body.Cuisines[0].Name != "한식" || body.Cuisines[0].Count != 2 {
+		t.Errorf("첫 종류가 %+v다. 개수가 많은 \"한식\" 2개가 먼저여야 한다", body.Cuisines[0])
 	}
 	if len(body.Places) != 3 {
 		t.Fatalf("가게가 %d곳이다. 3곳이어야 한다", len(body.Places))
