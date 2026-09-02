@@ -62,6 +62,8 @@ echo 'KAKAO_REST_API_KEY=발급받은_키' > api/.env
 
 ### 2. 서버 켜기 (터미널 두 개)
 
+`just`가 설치되어 있다면 `just dev` 한 줄로 아래 두 서버를 한 번에 켤 수 있습니다(Ctrl+C 한 번이면 둘 다 꺼집니다). 아래는 그 안에서 실제로 하는 일입니다.
+
 ```bash
 # 터미널 1 — Go 서버
 cd api
@@ -84,7 +86,7 @@ API_ORIGIN=http://localhost:8090 npm run dev
 
 ### 3. 잘 도는지 확인하기
 
-두 줄을 한 터미널에 그대로 붙여 넣어도 됩니다.
+`just check` 한 줄로도 됩니다. 아래는 그 안에서 실제로 도는 명령이고, 두 줄을 한 터미널에 그대로 붙여 넣어도 됩니다.
 
 ```bash
 cd api && go test ./... && go vet ./...
