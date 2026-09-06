@@ -105,15 +105,55 @@ func TestNoRuleIsShadowedByAnEarlierOne(t *testing.T) {
 }
 
 // 어휘가 실제로 다 도달 가능한지 확인한다. 도달 못 하는 어휘는 화면에 영영 안 나온다.
+//
+// 개수만 세면 안 되는 이유: "bapjip"을 "baljip"으로 오타 내도 개수는 그대로 18개라
+// 시험이 통과해 버린다. 그런데 이 뒤에 오는 여러 작업이 정확히 이 문자열들을
+// 저장·대조 키로 그대로 쓰므로, 이름이 바뀌면 그 작업들이 조용히 깨진다.
+// 그래서 개수가 아니라 이름 집합 전체를 대조한다. 이 목록은 rules에서 뽑지 않고
+// 여기 그대로 적는다 — rules에서 뽑으면 rules를 잘못 바꿔도 항상 자기 자신과
+// 같아서 시험이 아무것도 못 지킨다.
 func TestEveryCuisineIsReachable(t *testing.T) {
+	want := map[string]bool{
+		"bapjip": true, "gogi": true, "dak": true, "gukbap": true,
+		"myeon": true, "hoe": true, "bunsik": true, "jungsik": true,
+		"ilsik": true, "donkatsu": true, "yangsik": true, "burger": true,
+		"salad": true, "asia": true, "shabu": true, "bbang": true,
+		"fusion": true, "dosirak": true,
+	}
 	reached := map[string]bool{}
 	for _, r := range rules {
 		if r.cuisine.ID != "" {
 			reached[r.cuisine.ID] = true
 		}
 	}
-	if len(reached) < 18 {
-		t.Errorf("도달 가능한 어휘가 %d가지뿐이다. 설계는 18가지다", len(reached))
+	for id := range want {
+		if !reached[id] {
+			t.Errorf("어휘 %q가 어떤 규칙으로도 도달할 수 없다", id)
+		}
+	}
+	for id := range reached {
+		if !want[id] {
+			t.Errorf("어휘 %q는 설계에 없는데 규칙에 등장한다", id)
+		}
+	}
+}
+
+// 같은 ID가 서로 다른 이름표를 달면, CountBy가 (ID, Label) 전체를 map 키로 쓰기
+// 때문에(cuisine.go) 같은 종류가 화면에 카드 두 장으로 갈라진다 — 이 패키지가
+// 풀려는 문제(한식이 여러 카드로 쪼개지는 것)를 우리 손으로 다시 만드는 것과 같다.
+func TestNoCuisineIDHasTwoLabels(t *testing.T) {
+	labelOf := map[string]string{}
+	for _, r := range rules {
+		if r.cuisine.ID == "" {
+			continue
+		}
+		if prev, ok := labelOf[r.cuisine.ID]; ok {
+			if prev != r.cuisine.Label {
+				t.Errorf("ID %q가 이름표 %q와 %q 두 가지를 갖는다", r.cuisine.ID, prev, r.cuisine.Label)
+			}
+			continue
+		}
+		labelOf[r.cuisine.ID] = r.cuisine.Label
 	}
 }
 
