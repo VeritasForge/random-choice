@@ -12,6 +12,13 @@ import "math"
 const earthRadiusM = 6_371_000.0
 
 // metersPerDegreeLat은 위도 1도의 거리(미터)다. 위도와 무관하게 거의 일정하다.
+//
+// 이 두 상수는 서로 다른 물리 모델에서 왔다 — earthRadiusM은 지구를 완전한
+// 구로 본 평균 반지름이고, metersPerDegreeLat은 실제 타원체 측지 기준값이다.
+// earthRadiusM이 함의하는 구로 위도 1도를 계산하면 111,194.93m가 나와
+// metersPerDegreeLat과 약 0.11% 차이가 난다. 400m 이동에서는 0.45m 차이라
+// 이 패키지의 용도에는 무해하지만, 값이 갈리는 이유를 남겨 두지 않으면
+// 다음에 이 코드를 보는 사람이 "왜 두 상수가 안 맞지?"에서 멈춘다.
 const metersPerDegreeLat = 111_320.0
 
 // DistanceMeters는 두 좌표 사이의 대권 거리를 미터로 돌려준다(하버사인).

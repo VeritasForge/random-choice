@@ -5,6 +5,23 @@ import (
 	"testing"
 )
 
+// assertClose는 got이 want의 tol 안에 있는지 본다.
+//
+// NaN을 따로 걸러내는 이유: Go에서 NaN과의 비교는 무엇이든 거짓이라,
+// `math.Abs(NaN-want) > tol` 도 거짓이 되어 t.Errorf가 아예 불리지 않는다.
+// 즉 함수가 NaN을 돌려주면 시험이 조용히 통과한다. 하버사인의 부호를 하나
+// 뒤집으면 실제로 그 상태가 되는 것을 검토에서 재현했다.
+func assertClose(t *testing.T, label string, got, want, tol float64) {
+	t.Helper()
+	if math.IsNaN(got) {
+		t.Errorf("%s = NaN. 계산이 깨졌다", label)
+		return
+	}
+	if math.Abs(got-want) > tol {
+		t.Errorf("%s = %.1f, want %.1f ± %.1f", label, got, want, tol)
+	}
+}
+
 // 카카오가 준 거리와 우리 계산이 맞는지 실측으로 대조했다(2026-09-06).
 // 강남역(37.4979, 127.0276)에서 북쪽 400m 지점으로 조회했을 때,
 // 카카오는 '소보키 강남점'까지 24m라고 답했고 우리 계산도 25m였다.
@@ -23,9 +40,7 @@ func TestDistanceMeters(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got := DistanceMeters(tt.lat1, tt.lng1, tt.lat2, tt.lng2)
-			if math.Abs(got-tt.want) > tt.tolerance {
-				t.Errorf("DistanceMeters = %.1fm, want %.1fm ± %.1f", got, tt.want, tt.tolerance)
-			}
+			assertClose(t, "DistanceMeters", got, tt.want, tt.tolerance)
 		})
 	}
 }
@@ -34,9 +49,7 @@ func TestDistanceMeters(t *testing.T) {
 func TestDistanceIsSymmetric(t *testing.T) {
 	a := DistanceMeters(37.4979, 127.0276, 37.5563, 126.9236)
 	b := DistanceMeters(37.5563, 126.9236, 37.4979, 127.0276)
-	if math.Abs(a-b) > 0.01 {
-		t.Errorf("방향에 따라 거리가 다르다: %.3f vs %.3f", a, b)
-	}
+	assertClose(t, "방향에 따라 거리가 다르다", a, b, 0.01)
 }
 
 func TestOffset(t *testing.T) {
@@ -47,12 +60,9 @@ func TestOffset(t *testing.T) {
 		if gotLat <= lat {
 			t.Errorf("위도가 커지지 않았다: %f -> %f", lat, gotLat)
 		}
-		if math.Abs(gotLng-lng) > 1e-9 {
-			t.Errorf("경도가 움직였다: %f -> %f", lng, gotLng)
-		}
-		if d := DistanceMeters(lat, lng, gotLat, gotLng); math.Abs(d-400) > 1 {
-			t.Errorf("옮긴 거리 = %.1fm, want 400m", d)
-		}
+		assertClose(t, "경도가 움직였다", gotLng, lng, 1e-9)
+		d := DistanceMeters(lat, lng, gotLat, gotLng)
+		assertClose(t, "옮긴 거리", d, 400, 1)
 	})
 
 	t.Run("동쪽으로 옮기면 경도만 커진다", func(t *testing.T) {
@@ -60,12 +70,9 @@ func TestOffset(t *testing.T) {
 		if gotLng <= lng {
 			t.Errorf("경도가 커지지 않았다: %f -> %f", lng, gotLng)
 		}
-		if math.Abs(gotLat-lat) > 1e-9 {
-			t.Errorf("위도가 움직였다: %f -> %f", lat, gotLat)
-		}
-		if d := DistanceMeters(lat, lng, gotLat, gotLng); math.Abs(d-400) > 1 {
-			t.Errorf("옮긴 거리 = %.1fm, want 400m", d)
-		}
+		assertClose(t, "위도가 움직였다", gotLat, lat, 1e-9)
+		d := DistanceMeters(lat, lng, gotLat, gotLng)
+		assertClose(t, "옮긴 거리", d, 400, 1)
 	})
 
 	t.Run("음수는 반대 방향", func(t *testing.T) {
@@ -73,6 +80,14 @@ func TestOffset(t *testing.T) {
 		if southLat >= lat {
 			t.Errorf("남쪽으로 가지 않았다: %f -> %f", lat, southLat)
 		}
+	})
+
+	// 둘 다 0이면 좌표가 그대로여야 한다. "북쪽만"·"동쪽만"만 시험하면
+	// 이 항등 경우(움직이지 않는 경우)는 아무도 확인하지 않는다.
+	t.Run("둘 다 0이면 원점 그대로다", func(t *testing.T) {
+		gotLat, gotLng := Offset(lat, lng, 0, 0)
+		assertClose(t, "위도", gotLat, lat, 1e-9)
+		assertClose(t, "경도", gotLng, lng, 1e-9)
 	})
 
 	// 경도 1도의 실제 거리는 위도에 따라 다르다. 위도를 무시하면 북쪽으로 갈수록
