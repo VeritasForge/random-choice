@@ -276,7 +276,13 @@ export default function Home() {
     <main
       ref={mainRef}
       tabIndex={-1}
-      className="mx-auto flex min-h-dvh w-full max-w-md flex-col items-center justify-center gap-8 p-6 focus:outline-none"
+      /*
+        아래 여백을 안전 영역만큼 벌린다. 주요 버튼을 화면 맨 아래에 두었는데,
+        홈 인디케이터가 있는 기기에서는 그 자리가 시스템 제스처 영역이라
+        버튼을 누르려다 앱이 닫히거나 홈으로 나간다. env()가 0인 기기에서는
+        max()가 원래 여백(1.5rem)을 그대로 고른다.
+      */
+      className="mx-auto flex min-h-dvh w-full max-w-md flex-col items-center justify-center gap-8 p-6 pb-[max(1.5rem,env(safe-area-inset-bottom))] focus:outline-none"
     >
       {(view.kind === "start" || view.kind === "loading") && (
         <StartScreen

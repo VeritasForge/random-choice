@@ -39,18 +39,24 @@ type Props = {
 const FEW = 2;
 
 const ROW_CLASS =
-  "flex items-center justify-between gap-3 rounded-xl border border-neutral-200 p-4 dark:border-neutral-800";
-const BUTTON_CLASS =
-  "rounded-full border border-neutral-300 px-6 py-3 text-sm font-medium transition hover:bg-neutral-100 dark:border-neutral-700 dark:hover:bg-neutral-800";
-const SMALL_BUTTON_CLASS =
-  "shrink-0 rounded-full border border-neutral-300 px-3 py-2 text-xs font-medium transition hover:bg-neutral-100 dark:border-neutral-700 dark:hover:bg-neutral-800";
+  "row flex items-center justify-between gap-3 rounded-xl border border-line p-3";
 
 /**
- * 상호·주소·거리를 담은 줄. 상호만 링크로 만드는 이유: 옆에 "여기로 정했어요" 버튼이
+ * 상호·거리·주소를 담은 줄. 상호만 링크로 만드는 이유: 옆에 "여기로 정했어요" 버튼이
  * 서는데, 버튼을 링크 안에 넣으면 HTML이 허락하지 않는 중첩이 되어 키보드·낭독기가
  * 둘 중 하나를 제대로 집지 못한다. 그래서 줄 전체가 아니라 상호만 링크다.
+ *
+ * 다만 상호 글자만으로는 걸으면서 누르기에 너무 작다. 그래서 링크에 row-link를 붙여
+ * 보이지 않는 겹침 층을 줄 전체에 깐다 — 마크업의 중첩은 그대로 없고 판정 영역만
+ * 줄 전체로 넓어진다(app/globals.css에 까닭을 적어 두었다).
+ *
+ * 거리와 주소를 한 줄에 붙인 이유: 따로 두면 줄이 세 줄이 되어 네 곳을 보여 주는 데
+ * 휴대폰 한 화면을 다 쓴다. 거리를 앞에 두는 것은 점심에 먼저 보는 값이 그것이라서다.
  */
 function PlaceRow({ place }: { place: Place }) {
+  // 주소가 비어 올 수 있다. 그대로 이으면 "240m · 도보 4분 · "처럼 꼬리가 남는다.
+  const meta = [distanceLabel(place.distance), place.roadAddress].filter(Boolean).join(" · ");
+
   return (
     <span className="flex min-w-0 flex-col gap-0.5">
       {/*
@@ -65,15 +71,15 @@ function PlaceRow({ place }: { place: Place }) {
           href={place.placeUrl}
           target="_blank"
           rel="noreferrer noopener"
-          className="truncate font-semibold underline-offset-4 transition hover:underline"
+          className="row-link truncate text-lg font-semibold underline-offset-4 hover:underline"
         >
           {place.name}
         </a>
       ) : (
-        <span className="truncate font-semibold">{place.name}</span>
+        <span className="truncate text-lg font-semibold">{place.name}</span>
       )}
-      <span className="truncate text-xs text-neutral-500">{place.roadAddress}</span>
-      <span className="text-xs text-neutral-500">{distanceLabel(place.distance)}</span>
+      {/* tabular-nums: 24m·49m·80m처럼 숫자가 세로로 늘어서므로 자리폭을 고정해 눈금처럼 읽히게 한다. */}
+      <span className="truncate text-sm text-muted tabular-nums">{meta}</span>
     </span>
   );
 }
@@ -99,18 +105,25 @@ function DecideControl({
   if (decided) {
     // tabIndex={-1}은 Tab 순서에 넣기 위한 것이 아니라(누를 것이 없으므로 넣으면 안 된다)
     // 아래 useEffect가 여기로 포커스를 옮길 수 있게 하기 위한 것이다.
+    //
+    // row-action이 붙는 이유는 버튼과 같다. 이 글자가 겹침 층 아래로 들어가면
+    // 포커스가 옮겨 온 자리를 눌렀을 때 엉뚱하게 가게 페이지가 열린다.
     return (
       <span
         ref={markRef}
         tabIndex={-1}
-        className="shrink-0 text-xs font-semibold text-neutral-500"
+        className="row-action shrink-0 text-sm font-semibold text-muted"
       >
         정하신 곳
       </span>
     );
   }
   return (
-    <button type="button" onClick={() => onDecide(place)} className={SMALL_BUTTON_CLASS}>
+    <button
+      type="button"
+      onClick={() => onDecide(place)}
+      className="btn btn-accent-quiet btn-sm row-action shrink-0"
+    >
       여기로 정했어요
     </button>
   );
@@ -162,78 +175,88 @@ export default function ResultScreen({
   }
 
   return (
-    <section className="flex w-full flex-col items-center gap-6">
-      {/*
-        회피가 한 일을 맨 위에서 밝힌다. 조용히 거르면 사용자에게 통제권이 없는 것과
-        같기 때문이다. 회피를 껐을 때도 같은 자리에서 밝힌다 — 켜졌을 때만 알리고
-        껐을 때는 침묵하면, 사용자가 자기가 만든 상태를 모르는 채로 남는다.
-        둘 다 아니면(회피가 켜져 있고 뺀 것도 없으면) 줄 자체를 그리지 않는다.
-        기록이 빈 사람에게는 이 화면이 예전 그대로여야 한다.
-      */}
-      {banner !== null ? (
-        <div className="flex w-full flex-col items-center gap-2 rounded-xl bg-neutral-100 p-3 text-center dark:bg-neutral-900">
-          <p className="text-xs leading-relaxed text-neutral-600 dark:text-neutral-400">
-            {banner.text}
-          </p>
-          {banner.actionLabel !== null ? (
-            <button type="button" onClick={onToggleAvoid} className={SMALL_BUTTON_CLASS}>
-              {banner.actionLabel}
-            </button>
+    // grow·my-auto로 버튼 묶음을 화면 아래쪽에 붙인다(까닭은 StartScreen에 적어 두었다).
+    <section className="rise flex w-full grow flex-col">
+      <div className="my-auto flex w-full flex-col items-center gap-5 py-6">
+        {/*
+          회피가 한 일을 맨 위에서 밝힌다. 조용히 거르면 사용자에게 통제권이 없는 것과
+          같기 때문이다. 회피를 껐을 때도 같은 자리에서 밝힌다 — 켜졌을 때만 알리고
+          껐을 때는 침묵하면, 사용자가 자기가 만든 상태를 모르는 채로 남는다.
+          둘 다 아니면(회피가 켜져 있고 뺀 것도 없으면) 줄 자체를 그리지 않는다.
+          기록이 빈 사람에게는 이 화면이 예전 그대로여야 한다.
+        */}
+        {banner !== null ? (
+          <div className="flex w-full flex-col items-center gap-2 rounded-xl bg-surface p-3 text-center">
+            <p className="text-sm leading-relaxed text-muted">{banner.text}</p>
+            {banner.actionLabel !== null ? (
+              <button
+                type="button"
+                onClick={onToggleAvoid}
+                className="btn btn-quiet btn-sm"
+              >
+                {banner.actionLabel}
+              </button>
+            ) : null}
+          </div>
+        ) : null}
+
+        <div className="flex flex-col items-center gap-1 text-center">
+          <p className="text-base text-muted">오늘은</p>
+          {/*
+            결과는 단정적으로, 크게 한 덩어리로 보여 준다 — "묻지 않고 내놓는다"가
+            화면에서 드러나는 자리다. 설계가 정한 하한은 2.5rem이고 여기서는 3rem을 썼다.
+            화면에서 강조색을 쓰는 곳은 이 이름과 주요 버튼뿐이다.
+          */}
+          <h2 className="text-5xl leading-tight font-bold tracking-tight text-balance break-keep text-accent">
+            {cuisine}
+          </h2>
+          {total <= FEW ? (
+            <p className="text-sm text-muted">가까운 곳 중에서는 {total}곳을 찾았어요</p>
           ) : null}
         </div>
-      ) : null}
 
-      <div className="flex flex-col items-center gap-2">
-        <p className="text-sm text-neutral-500">오늘은</p>
-        <h2 className="text-3xl font-bold tracking-tight break-keep">{cuisine}</h2>
-        {total <= FEW ? (
-          <p className="text-xs text-neutral-500">
-            가까운 곳 중에서는 {total}곳을 찾았어요
-          </p>
-        ) : null}
+        <ul className="flex w-full flex-col gap-2">
+          {/*
+            key에 순번을 섞는 이유: 조회기는 식별자가 빈 가게를 일부러 살려 둔다
+            (api/internal/kakao/client.go). 그런 가게가 같은 종류에 둘 이상이면
+            key가 빈 문자열로 겹쳐, React가 목록을 다시 그릴 때 엉뚱한 항목을 재사용한다.
+          */}
+          {places.map((place, index) => (
+            <li key={place.id || `unknown-${index}`} className={ROW_CLASS}>
+              <PlaceRow place={place} />
+              <DecideControl
+                place={place}
+                decided={decidedIds.includes(place.id)}
+                markRef={place.id === justDecidedId ? markRef : undefined}
+                onDecide={decide}
+              />
+            </li>
+          ))}
+        </ul>
+
+        {/*
+          눈에는 보이지 않고 화면 낭독기만 읽는 영역. 후보 화면과 같은 까닭이다 —
+          "다른 가게 보기"는 화면 이름을 바꾸지 않아 포커스가 움직이지 않으므로,
+          이것이 없으면 낭독기 사용자는 버튼을 누르고도 목록이 바뀌었는지 알 수 없다.
+          "다시 넣기"도 같은 화면 안에서 목록만 바꾸므로 여기에 기댄다.
+        */}
+        <p role="status" aria-live="polite" className="sr-only">
+          {places.map((place) => place.name).join(", ")}
+        </p>
       </div>
 
-      <ul className="flex w-full flex-col gap-2">
-        {/*
-          key에 순번을 섞는 이유: 조회기는 식별자가 빈 가게를 일부러 살려 둔다
-          (api/internal/kakao/client.go). 그런 가게가 같은 종류에 둘 이상이면
-          key가 빈 문자열로 겹쳐, React가 목록을 다시 그릴 때 엉뚱한 항목을 재사용한다.
-        */}
-        {places.map((place, index) => (
-          <li key={place.id || `unknown-${index}`} className={ROW_CLASS}>
-            <PlaceRow place={place} />
-            <DecideControl
-              place={place}
-              decided={decidedIds.includes(place.id)}
-              markRef={place.id === justDecidedId ? markRef : undefined}
-              onDecide={decide}
-            />
-          </li>
-        ))}
-      </ul>
-
-      {/*
-        눈에는 보이지 않고 화면 낭독기만 읽는 영역. 후보 화면과 같은 까닭이다 —
-        "다른 가게 보기"는 화면 이름을 바꾸지 않아 포커스가 움직이지 않으므로,
-        이것이 없으면 낭독기 사용자는 버튼을 누르고도 목록이 바뀌었는지 알 수 없다.
-        "다시 넣기"도 같은 화면 안에서 목록만 바꾸므로 여기에 기댄다.
-      */}
-      <p role="status" aria-live="polite" className="sr-only">
-        {places.map((place) => place.name).join(", ")}
-      </p>
-
-      <div className="flex w-full flex-col gap-2">
+      <div className="flex w-full flex-col gap-3">
         {/*
           보여주지 못하고 남은 가게가 있을 때만 버튼을 둔다. 걸러진 것을 이미 전부
           보여주고 있는데 버튼을 두면, 눌러도 같은 목록이 그대로 남아
           이 화면이 고쳐 놓은 바로 그 인상을 다시 준다.
         */}
         {places.length < total ? (
-          <button type="button" onClick={onReshuffle} className={BUTTON_CLASS}>
+          <button type="button" onClick={onReshuffle} className="btn btn-quiet w-full">
             다른 가게 보기
           </button>
         ) : null}
-        <button type="button" onClick={onRestart} className={BUTTON_CLASS}>
+        <button type="button" onClick={onRestart} className="btn btn-quiet w-full">
           처음부터 다시
         </button>
       </div>

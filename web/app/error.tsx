@@ -25,7 +25,8 @@ export default function Error({
   }, [error]);
 
   return (
-    <main className="mx-auto flex min-h-dvh w-full max-w-md flex-col items-center justify-center gap-8 p-6">
+    // 아래 여백을 안전 영역만큼 벌리는 까닭은 app/page.tsx에 적어 두었다.
+    <main className="mx-auto flex min-h-dvh w-full max-w-md flex-col items-center justify-center gap-8 p-6 pb-[max(1.5rem,env(safe-area-inset-bottom))]">
       <Notice
         title="화면을 보여 주지 못했어요"
         description="잠시 후 다시 시도해 주세요. 문제가 계속되면 새로고침해 주세요."
