@@ -836,12 +836,20 @@ func TestSearchAroundKeepsPlacesWithEmptyID(t *testing.T) {
 }
 
 // 중심은 필수다. 가까운 곳이 하나도 없는 결과는 이 서비스에 쓸모가 없다.
+// isCenterRequest는 이 요청이 중심 지점을 물은 것인지 본다.
+//
+// **위도만 보면 안 된다.** 동쪽·서쪽 지점은 경도만 바뀌고 위도는 그대로라,
+// 위도만 대조하면 그 둘도 중심으로 잡힌다. 조회기는 좌표를 
+// strconv.FormatFloat(v, 'f', -1, 64)로 넣으므로 같은 방식으로 만들어 대조한다.
+func isCenterRequest(r *http.Request, lat, lng float64) bool {
+	return r.URL.Query().Get("x") == strconv.FormatFloat(lng, 'f', -1, 64) &&
+		r.URL.Query().Get("y") == strconv.FormatFloat(lat, 'f', -1, 64)
+}
+
 func TestSearchAroundFailsWhenCenterFails(t *testing.T) {
 	const userLat, userLng = 37.4979, 127.0276
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		y := r.URL.Query().Get("y")
-		// 중심 지점(사용자 위도 그대로)만 실패시킨다.
-		if strings.HasPrefix(y, "37.497") {
+		if isCenterRequest(r, userLat, userLng) {
 			w.WriteHeader(http.StatusInternalServerError)
 			return
 		}
@@ -859,8 +867,7 @@ func TestSearchAroundFailsWhenCenterFails(t *testing.T) {
 func TestSearchAroundSurvivesPerimeterFailure(t *testing.T) {
 	const userLat, userLng = 37.4979, 127.0276
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		y := r.URL.Query().Get("y")
-		if strings.HasPrefix(y, "37.497") { // 중심만 성공
+		if isCenterRequest(r, userLat, userLng) { // 중심만 성공
 			writeJSON(t, w, `{"documents":[
 				{"id":"center","place_name":"중심가게","category_name":"음식점 > 한식",
 				 "phone":"","address_name":"","road_address_name":"길","place_url":"",
@@ -889,9 +896,8 @@ func TestSearchAroundCallsCenterBeforePerimeter(t *testing.T) {
 	var order []string
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		y := r.URL.Query().Get("y")
 		mu.Lock()
-		if strings.HasPrefix(y, "37.497") {
+		if isCenterRequest(r, userLat, userLng) {
 			order = append(order, "center")
 		} else {
 			order = append(order, "perimeter")
@@ -914,7 +920,7 @@ func TestSearchAroundCallsCenterBeforePerimeter(t *testing.T) {
 }
 ```
 
-시험 파일 맨 위 `import` 블록에 `"strings"`, `"sync"`, `"sync/atomic"`, `"fmt"`가 없으면
+시험 파일 맨 위 `import` 블록에 `"sync"`, `"sync/atomic"`, `"fmt"`, `"strconv"`가 없으면
 더합니다. `writeJSON`이라는 도우미가 없으면 아래를 시험 파일에 함께 넣습니다.
 
 ```go
