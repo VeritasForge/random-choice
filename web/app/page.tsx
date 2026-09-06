@@ -5,7 +5,13 @@ import CandidateScreen from "@/components/CandidateScreen";
 import Notice from "@/components/Notice";
 import ResultScreen from "@/components/ResultScreen";
 import StartScreen from "@/components/StartScreen";
-import { fetchNearby, NearbyError, type NearbyResult, type Place } from "@/lib/api";
+import {
+  fetchNearby,
+  NearbyError,
+  type Cuisine,
+  type NearbyResult,
+  type Place,
+} from "@/lib/api";
 import { errorNotice } from "@/lib/errors";
 import { getCurrentPosition, GeoError } from "@/lib/geo";
 import { pickAvoiding, pickDistinct, pickOne } from "@/lib/pick";
@@ -34,10 +40,26 @@ const PLACE_COUNT = 4;
 type View =
   | { kind: "start" }
   | { kind: "loading" }
-  | { kind: "candidates"; result: NearbyResult; candidates: string[] }
-  | { kind: "result"; cuisine: string; pool: Place[]; places: Place[] }
+  | { kind: "candidates"; result: NearbyResult; candidates: Cuisine[] }
+  | { kind: "result"; cuisine: Cuisine; pool: Place[]; places: Place[] }
   | { kind: "empty"; radius: number }
   | { kind: "error"; code: string; message: string; radius: number };
+
+/**
+ * 같은 id를 가진 종류가 겹치면 하나만 남긴다.
+ *
+ * 서버는 종류를 id별로 묶어 한 번씩만 보내 주지만, 그 성질은 JSON을 건너오면서
+ * 타입에서 사라진다. 여기서 한 번 좁혀 두면 이후 추첨과 React key가 모두 유일성 위에서 돈다.
+ * 보이는 이름이 아니라 id로 견주는 이유: 저장·대조의 기준이 id이고,
+ * 화면 문구는 나중에 둘이 같아지도록 다듬어질 수 있다.
+ *
+ * 원소를 복사하지 않고 받은 객체를 그대로 돌려주는 것이 중요하다. "다시 뽑기"는
+ * 직전 후보와 겹치지 않게 고르는데, 그 판정이 참조로 이뤄지기 때문이다
+ * (까닭은 web/lib/places.ts에 적어 두었다).
+ */
+function distinctById(cuisines: readonly Cuisine[]): Cuisine[] {
+  return [...new Map(cuisines.map((cuisine) => [cuisine.id, cuisine])).values()];
+}
 
 /**
  * 화면 단위 이름. start와 loading은 같은 화면의 두 상태이므로 하나로 본다 —
@@ -71,18 +93,15 @@ export default function Home() {
     try {
       const coords = await getCurrentPosition();
       const result = await fetchNearby(coords.lat, coords.lng, radius);
-      // 서버는 종류 이름을 유일하게 만들어 주지만, 그 성질은 JSON을 건너오면서
-      // 타입에서 사라진다. 여기서 한 번 좁혀 두면 이후 추첨과 React key가
-      // 모두 유일성 위에서 돈다.
-      const names = [...new Set(result.cuisines.map((cuisine) => cuisine.name))];
-      if (names.length === 0) {
+      const cuisines = distinctById(result.cuisines);
+      if (cuisines.length === 0) {
         setView({ kind: "empty", radius });
         return;
       }
       setView({
         kind: "candidates",
         result,
-        candidates: pickDistinct(names, CANDIDATE_COUNT, Math.random),
+        candidates: pickDistinct(cuisines, CANDIDATE_COUNT, Math.random),
       });
     } catch (error) {
       // 오류의 출처가 셋이고, 각각 코드를 담는 방식이 다르다.
@@ -106,16 +125,17 @@ export default function Home() {
 
   function reshuffle() {
     if (view.kind !== "candidates") return;
-    const names = [...new Set(view.result.cuisines.map((cuisine) => cuisine.name))];
+    const cuisines = distinctById(view.result.cuisines);
     setView({
       ...view,
-      candidates: pickAvoiding(names, CANDIDATE_COUNT, view.candidates, Math.random),
+      candidates: pickAvoiding(cuisines, CANDIDATE_COUNT, view.candidates, Math.random),
     });
   }
 
-  function choose(cuisine: string) {
+  function choose(cuisine: Cuisine) {
     if (view.kind !== "candidates") return;
-    const pool = view.result.places.filter((place) => place.cuisine === cuisine);
+    // 가게를 고른 종류에 맞추는 기준은 화면에 보이는 이름이 아니라 id다.
+    const pool = view.result.places.filter((place) => place.cuisineId === cuisine.id);
     setView({
       kind: "result",
       cuisine,

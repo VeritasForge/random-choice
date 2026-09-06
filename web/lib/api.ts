@@ -1,9 +1,15 @@
-export type Cuisine = { name: string; count: number };
+/**
+ * 음식 종류 하나. id와 label을 나눠 두는 이유는 쓰임이 다르기 때문이다 —
+ * id는 저장·대조에 쓰는 우리 어휘의 식별자이고(카카오 데이터가 아니라 저장해도 된다),
+ * label은 화면에 그리는 이름이다. 화면 문구를 다듬어도 id는 그대로여야
+ * 이전에 저장해 둔 것과 계속 맞춰 볼 수 있다.
+ */
+export type Cuisine = { id: string; label: string; count: number };
 
 export type Place = {
   id: string;
   name: string;
-  cuisine: string;
+  cuisineId: string;
   distance: number;
   roadAddress: string;
   phone: string;
@@ -56,7 +62,7 @@ export const REQUEST_TIMEOUT_MS = 20_000;
  * 서버는 모든 항목을 언제나 채워 보내므로(placeDTO·cuisineDTO에 omitempty가 없다)
  * 전부 확인해도 정상 응답이 거부되지 않는다.
  *
- * 값의 내용까지 요구하는 곳은 두 군데뿐이고, 각각 비면 화면이 조용히 망가진다.
+ * 값의 내용까지 요구하는 곳은 세 군데뿐이고, 각각 비면 화면이 조용히 망가진다.
  */
 function isCuisine(value: unknown): value is Cuisine {
   if (typeof value !== "object" || value === null) {
@@ -64,10 +70,15 @@ function isCuisine(value: unknown): value is Cuisine {
   }
   const candidate = value as Cuisine;
   return (
-    // 이름이 빈 문자열이어도 안 된다. 서버는 종류를 만들지 못한 가게를 아예 빼므로
-    // 빈 이름은 계약 위반이고, 그대로 통과시키면 글자 없는 후보 버튼이 그려진다.
-    typeof candidate.name === "string" &&
-    candidate.name.length > 0 &&
+    // id가 빈 문자열이어도 안 된다. 서버는 종류를 만들지 못한 가게를 아예 빼므로
+    // 빈 id는 계약 위반이고, 그대로 통과시키면 어느 가게의 cuisineId와도 맞지 않아
+    // 눌러도 목록이 텅 빈 후보가 생긴다. React key도 함께 무너진다.
+    typeof candidate.id === "string" &&
+    candidate.id.length > 0 &&
+    // label이 비면 글자 없는 후보 버튼이 그려진다. 누를 수는 있는데 무엇을 고르는지
+    // 보이지 않으므로, id가 빈 경우와 마찬가지로 오류 없이 망가진 화면이 된다.
+    typeof candidate.label === "string" &&
+    candidate.label.length > 0 &&
     Number.isFinite(candidate.count)
   );
 }
@@ -80,10 +91,10 @@ function isPlace(value: unknown): value is Place {
   return (
     // id는 빌 수 있다. 조회기가 식별자 없는 가게를 일부러 살려 두기 때문이다.
     typeof candidate.id === "string" &&
-    // cuisine은 빌 수 없다. 비면 결과 화면의 종류 필터에 아무것도 걸리지 않아
+    // cuisineId는 빌 수 없다. 비면 결과 화면의 종류 필터에 아무것도 걸리지 않아
     // 제목만 뜨고 목록이 텅 빈 막다른 화면이 된다.
-    typeof candidate.cuisine === "string" &&
-    candidate.cuisine.length > 0 &&
+    typeof candidate.cuisineId === "string" &&
+    candidate.cuisineId.length > 0 &&
     typeof candidate.name === "string" &&
     typeof candidate.roadAddress === "string" &&
     typeof candidate.placeUrl === "string" &&
@@ -97,8 +108,8 @@ function isPlace(value: unknown): value is Place {
 /**
  * 받은 값이 NearbyResult의 모양을 갖췄는지 확인한다.
  *
- * 원소까지 보는 이유: 배열 두 개만 확인하면 `{"cuisines":["한식"],"places":[]}` 같은
- * 값이 통과한다. 그러면 화면이 이름을 읽을 때 undefined가 나오는데, 그것이 후보 하나로
+ * 원소까지 보는 이유: 배열 두 개만 확인하면 `{"cuisines":["분식"],"places":[]}` 같은
+ * 값이 통과한다. 그러면 화면이 표시 이름을 읽을 때 undefined가 나오는데, 그것이 후보 하나로
  * 세어져 글자 없는 버튼이 뜨고, 눌러도 해당하는 가게가 없는 화면으로 끝난다.
  * 오류도 흔적도 남지 않는 무증상 오작동이라, 여기서 막는 편이 훨씬 낫다.
  * 한 조회 상한이 45곳이라 원소를 전부 훑어도 비용은 없다.

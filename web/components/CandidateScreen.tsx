@@ -1,6 +1,8 @@
+import type { Cuisine } from "@/lib/api";
+
 type Props = {
-  candidates: string[];
-  onChoose: (cuisine: string) => void;
+  candidates: Cuisine[];
+  onChoose: (cuisine: Cuisine) => void;
   onReshuffle: () => void;
   onDecideForMe: () => void;
 };
@@ -18,12 +20,15 @@ export default function CandidateScreen({
       <div className="grid w-full grid-cols-2 gap-3">
         {candidates.map((cuisine) => (
           <button
-            key={cuisine}
+            // key는 화면에 보이는 이름이 아니라 id다. 서로 다른 종류가 같은 이름을
+            // 갖게 되어도 key가 겹치지 않아야, React가 목록을 다시 그릴 때
+            // 엉뚱한 버튼을 재사용하지 않는다.
+            key={cuisine.id}
             type="button"
             onClick={() => onChoose(cuisine)}
             className="flex min-h-28 items-center justify-center rounded-2xl border border-neutral-200 bg-white p-4 text-center text-base font-semibold break-keep transition hover:border-neutral-900 dark:border-neutral-800 dark:bg-neutral-900 dark:hover:border-white"
           >
-            {cuisine}
+            {cuisine.label}
           </button>
         ))}
       </div>
@@ -35,7 +40,7 @@ export default function CandidateScreen({
         내용이 바뀔 때만 읽히므로 처음 들어올 때는 조용하다 — 그때는 포커스 이동이 알린다.
       */}
       <p role="status" aria-live="polite" className="sr-only">
-        {`후보: ${candidates.join(", ")}`}
+        {`후보: ${candidates.map((cuisine) => cuisine.label).join(", ")}`}
       </p>
 
       <div className="flex w-full flex-col gap-2">

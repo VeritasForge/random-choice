@@ -22,12 +22,12 @@ afterEach(() => {
 describe("fetchNearby", () => {
   it("성공하면 결과를 그대로 돌려준다", async () => {
     const payload = {
-      cuisines: [{ name: "분식", count: 2 }],
+      cuisines: [{ id: "bunsik", label: "분식", count: 2 }],
       places: [
         {
           id: "1",
           name: "김밥집",
-          cuisine: "분식",
+          cuisineId: "bunsik",
           distance: 100,
           roadAddress: "서울 강남구 테헤란로 1",
           phone: "02-000-0000",
@@ -105,14 +105,19 @@ describe("fetchNearby", () => {
       [],
       // 원소까지 보지 않으면 아래 두 가지가 통과한다. 그러면 화면은 오류 없이
       // 글자 없는 후보 버튼을 그리고, 눌러도 아무 가게가 없는 화면으로 끝난다.
-      { cuisines: ["한식"], places: [] },
-      { cuisines: [{ name: "한식", count: 1 }], places: [{ name: "가게" }] },
-      // 이름이 빈 종류는 글자 없는 후보 버튼이 된다.
-      { cuisines: [{ name: "", count: 1 }], places: [] },
-      // id는 있는데 cuisine이 없는 가게 — 결과 화면 필터에 걸리지 않아 빈 목록이 된다.
-      { cuisines: [{ name: "한식", count: 1 }], places: [{ id: "1", name: "가게" }] },
+      { cuisines: ["분식"], places: [] },
+      { cuisines: [{ id: "bunsik", label: "분식", count: 1 }], places: [{ name: "가게" }] },
+      // 표시 이름이 빈 종류는 글자 없는 후보 버튼이 된다.
+      { cuisines: [{ id: "bunsik", label: "", count: 1 }], places: [] },
+      // 식별자가 빈 종류는 가게의 cuisineId와 맞춰 볼 것이 없어 눌러도 빈 화면이 된다.
+      { cuisines: [{ id: "", label: "분식", count: 1 }], places: [] },
+      // id는 있는데 cuisineId가 없는 가게 — 결과 화면 필터에 걸리지 않아 빈 목록이 된다.
+      { cuisines: [{ id: "bunsik", label: "분식", count: 1 }], places: [{ id: "1", name: "가게" }] },
       // 화면이 그대로 그리는 이름·거리가 빠진 가게
-      { cuisines: [{ name: "한식", count: 1 }], places: [{ id: "1", cuisine: "한식" }] },
+      {
+        cuisines: [{ id: "bunsik", label: "분식", count: 1 }],
+        places: [{ id: "1", cuisineId: "bunsik" }],
+      },
     ]) {
       respondWith(200, body);
       await expect(fetchNearby(37.5, 127.0, 500)).rejects.toMatchObject({
@@ -251,7 +256,7 @@ describe("응답 원소 검사 — 항목 하나씩", () => {
   const GOOD_PLACE = {
     id: "1",
     name: "김밥집",
-    cuisine: "분식",
+    cuisineId: "bunsik",
     distance: 100,
     roadAddress: "서울 강남구 테헤란로 1",
     phone: "02-000-0000",
@@ -259,7 +264,7 @@ describe("응답 원소 검사 — 항목 하나씩", () => {
     lat: 37.5,
     lng: 127.0,
   };
-  const GOOD_CUISINES = [{ name: "분식", count: 1 }];
+  const GOOD_CUISINES = [{ id: "bunsik", label: "분식", count: 1 }];
 
   const cases: Record<string, Record<string, unknown>> = {
     "이름이 없다": { name: undefined },
@@ -267,7 +272,8 @@ describe("응답 원소 검사 — 항목 하나씩", () => {
     "장소 주소가 없다": { placeUrl: undefined },
     "거리가 없다": { distance: undefined },
     "거리가 숫자가 아니다": { distance: "100" },
-    "종류가 빈 문자열이다": { cuisine: "" },
+    "종류 식별자가 없다": { cuisineId: undefined },
+    "종류 식별자가 빈 문자열이다": { cuisineId: "" },
     "식별자가 숫자다": { id: 1 },
     "전화번호가 없다": { phone: undefined },
     "위도가 없다": { lat: undefined },
@@ -275,6 +281,12 @@ describe("응답 원소 검사 — 항목 하나씩", () => {
   };
 
   const cuisineCases: Record<string, Record<string, unknown>> = {
+    "종류에 식별자가 없다": { id: undefined },
+    "종류의 식별자가 빈 문자열이다": { id: "" },
+    "종류의 식별자가 문자열이 아니다": { id: 1 },
+    "종류에 표시 이름이 없다": { label: undefined },
+    "종류의 표시 이름이 빈 문자열이다": { label: "" },
+    "종류의 표시 이름이 문자열이 아니다": { label: 1 },
     "종류에 개수가 없다": { count: undefined },
     "종류의 개수가 숫자가 아니다": { count: "1" },
   };
@@ -310,7 +322,7 @@ describe("응답 원소 검사 — 항목 하나씩", () => {
       vi.fn(
         async () =>
           new Response(
-            '{"cuisines":[{"name":"분식","count":1e999}],"places":[{"id":"1","name":"김밥집","cuisine":"분식","distance":100,"roadAddress":"주소","phone":"","placeUrl":"http://x","lat":37.5,"lng":127.0}]}',
+            '{"cuisines":[{"id":"bunsik","label":"분식","count":1e999}],"places":[{"id":"1","name":"김밥집","cuisineId":"bunsik","distance":100,"roadAddress":"주소","phone":"","placeUrl":"http://x","lat":37.5,"lng":127.0}]}',
             { status: 200, headers: { "Content-Type": "application/json" } },
           ),
       ),
@@ -327,7 +339,7 @@ describe("응답 원소 검사 — 항목 하나씩", () => {
       vi.fn(
         async () =>
           new Response(
-            '{"cuisines":[{"name":"분식","count":1}],"places":[{"id":"1","name":"김밥집","cuisine":"분식","distance":1e999,"roadAddress":"주소","phone":"","placeUrl":"http://x","lat":37.5,"lng":127.0}]}',
+            '{"cuisines":[{"id":"bunsik","label":"분식","count":1}],"places":[{"id":"1","name":"김밥집","cuisineId":"bunsik","distance":1e999,"roadAddress":"주소","phone":"","placeUrl":"http://x","lat":37.5,"lng":127.0}]}',
             { status: 200, headers: { "Content-Type": "application/json" } },
           ),
       ),

@@ -8,7 +8,7 @@ function place(name: string, distance: number): Place {
   return {
     id: name,
     name,
-    cuisine: "샐러드",
+    cuisineId: "salad",
     distance,
     roadAddress: "",
     phone: "",
