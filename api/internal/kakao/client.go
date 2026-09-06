@@ -146,6 +146,14 @@ const perimeterOffsetM = 400.0
 // lat,lng 기준으로 다시 계산한 값이다. 카카오의 거리는 조회 중심 기준이라
 // 그대로 쓰면 412m가 24m로 표시된다.
 func (c *Client) SearchAround(ctx context.Context, lat, lng float64, radius int) ([]Place, error) {
+	// 다섯 지점 전체의 시간 상한. 안쪽 SearchRestaurants도 각자 상한을 열지만,
+	// 이미 마감이 잡힌 부모에서 파생되므로 더 이른 이쪽 마감을 물려받는다.
+	// 이 줄이 없으면 중심(≤12초)과 둘레(≤12초)의 예산이 더해져 최악 24초가 되고,
+	// 서버의 응답 쓰기 상한(20초)과 화면 요청 상한(20초)을 넘어선다 —
+	// 안쪽이 바깥쪽보다 짧아야 한다는 순서가 뒤집힌다.
+	ctx, cancel := context.WithTimeout(ctx, c.searchTimeout)
+	defer cancel()
+
 	// 중심을 먼저 부른다. 다섯을 한꺼번에 쏘면 우리 요청 하나가 카카오 호출을
 	// 열다섯 개 동시에 내는데, 429가 순간 호출 제한이라면 사용자가 한 명뿐일 때도
 	// 그중 몇 개가 튕긴다. 하필 중심이 튕기면 전체가 실패로 답해진다.

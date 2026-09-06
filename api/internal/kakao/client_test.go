@@ -993,3 +993,63 @@ func TestSearchAroundCallsCenterBeforePerimeter(t *testing.T) {
 		t.Errorf("호출 순서 = %v, 중심이 먼저여야 한다", order)
 	}
 }
+
+// 이 시험은 시계를 본다. 느리다고 지우지 마라 — 이 문제를 잡을 수 있는 시험이
+// 지금 이것뿐이다.
+//
+// 무엇을 지키는가: 다섯 지점 전체가 시간 예산 "하나"를 나눠 써야 한다.
+// SearchRestaurants는 불릴 때마다 자기 몫의 상한을 새로 여는데, SearchAround가
+// 중심을 기다린 뒤에 둘레를 시작하므로 위에서 전체 예산을 잡아 두지 않으면
+// 두 구간의 상한이 그대로 더해진다. 실제 값으로는 12초짜리가 최악 24초가 되고,
+// 서버의 응답 쓰기 상한(20초)과 화면의 요청 상한(20초)을 둘 다 넘어선다 —
+// 안쪽이 바깥쪽보다 짧아야 한다는 순서가 뒤집힌다.
+//
+// 왜 굳이 시간을 재는가: cmd/server/main_test.go의 TestTimeoutsAreOrderedOutward가
+// 이 순서를 지키고 있지만, 그 시험은 "선언된 상수"끼리(12초 < 20초 < 25초)
+// 견준다. 상수는 그대로 둔 채 실제 걸리는 시간만 24초가 되는 이 상황에서는
+// 그쪽이 초록불로 남는다. 그래서 여기서는 선언값이 아니라 경과 시간을 잰다.
+func TestSearchAroundKeepsOneTimeBudgetForAllPoints(t *testing.T) {
+	const userLat, userLng = 37.4979, 127.0276
+	// 실제 상한(12초)으로 재면 시험 한 번에 24초가 걸린다. 짧은 값으로 바꿔
+	// 같은 구조를 재현한다 — 우리가 보는 것은 절대 시간이 아니라 예산의 배수다.
+	const budget = 400 * time.Millisecond
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if isCenterRequest(r, userLat, userLng) {
+			// 중심은 예산의 절반을 쓰고 성공한다.
+			time.Sleep(budget / 2)
+			writeJSON(t, w, `{"documents":[
+				{"id":"center","place_name":"중심가게","category_name":"음식점 > 한식",
+				 "phone":"","address_name":"","road_address_name":"길","place_url":"",
+				 "x":"127.0276","y":"37.4979","distance":"10"}],"meta":{"is_end":true}}`)
+			return
+		}
+		// 둘레는 영영 답하지 않는다. 상한이 끊어 줄 때까지 기다린다 —
+		// 그냥 재우면 시험이 끝난 뒤에도 고루틴이 남는다.
+		<-r.Context().Done()
+	}))
+	defer server.Close()
+
+	client := NewClientWithBaseURL("key", server.URL, server.Client())
+	client.searchTimeout = budget
+
+	start := time.Now()
+	places, err := client.SearchAround(context.Background(), userLat, userLng, 500)
+	elapsed := time.Since(start)
+
+	// 둘레가 통째로 멈춰 있어도 중심 결과는 살아남아야 한다.
+	if err != nil {
+		t.Fatalf("둘레가 멈췄다고 전체가 실패하면 안 된다: %v", err)
+	}
+	if len(places) != 1 {
+		t.Errorf("받은 가게 %d곳, want 1곳 — 둘레가 죽어도 중심 결과는 남아야 한다", len(places))
+	}
+
+	// 예산 하나를 나눠 쓰면 전체가 예산 안(중심 0.5 + 둘레가 남은 0.5)에서 끝난다.
+	// 각자 새로 열면 중심 0.5 + 둘레 1.0 = 예산의 1.5배가 된다.
+	if limit := budget * 3 / 2; elapsed > limit {
+		t.Errorf("SearchAround가 %v 걸렸다(상한 %v = 예산 %v의 1.5배). "+
+			"중심과 둘레가 예산을 각자 새로 열고 있다 — 맨 위에서 전체 예산을 "+
+			"한 번만 잡아 안쪽이 그 마감을 물려받게 해야 한다", elapsed, limit, budget)
+	}
+}
