@@ -35,9 +35,10 @@ export const STORAGE_KEY = "random-choice.visits.v1";
 /**
  * 기록을 보관하는 날짜 수.
  *
- * 회피 기간과 같은 값으로 둔다. 다르게 두면 기록 화면에 "정한 곳"으로 보이는데
- * 정작 회피에는 안 쓰이는 항목이 섞여, 사용자가 "목록에 있는데 왜 또 나오지?"
- * 하게 된다. 같으면 기록 화면이 곧 "지금 빼고 있는 것"의 목록이 된다.
+ * 회피 규칙은 자기 상수를 따로 선언하지 말고 이 값을 그대로 가져다 써야 한다.
+ * 두 곳에 각자 값을 두면 나중에 한쪽만 바뀌어, 기록 화면에는 "정한 곳"으로
+ * 보이는데 정작 회피에는 안 쓰이는(또는 그 반대인) 항목이 생긴다. 이 값을
+ * 가져다 쓰는 한 기록 화면은 항상 "지금 빼고 있는 것"의 목록과 같다.
  *
  * 14일이라는 수에 근거는 없다. "2주에 한 번은 같은 집에 가도 된다"는 감각일 뿐이고,
  * 지금 구조에는 계측이 없어서 이 값을 고칠 자료도 모이지 않는다(설계 문서 14절).
@@ -106,12 +107,21 @@ function save(store: Store | null, visits: Visit[]): void {
   }
 }
 
+/**
+ * 보관 기간이 지난 기록을 뺀다.
+ *
+ * 읽을 때만 이렇게 걸러서는 안 된다. recordVisit·forgetVisit도 이걸 거쳐야
+ * 저장소에 쓰기 전에 만료된 항목이 빠진다 — 그러지 않으면 읽을 때는 안 보이는
+ * 기록이 쓸 때마다 그대로 다시 저장되어 저장소가 끝없이 커진다.
+ */
+function withoutExpired(visits: Visit[], now: Date): Visit[] {
+  const cutoff = now.getTime() - RETENTION_DAYS * DAY_MS;
+  return visits.filter((v) => Date.parse(v.at) >= cutoff);
+}
+
 /** 보관 기간 안에 있는 기록만 돌려준다. 최근에 정한 것이 앞에 온다. */
 export function readVisits(store: Store | null, now: Date = new Date()): Visit[] {
-  const cutoff = now.getTime() - RETENTION_DAYS * DAY_MS;
-  return load(store)
-    .filter((v) => Date.parse(v.at) >= cutoff)
-    .sort((a, b) => Date.parse(b.at) - Date.parse(a.at));
+  return withoutExpired(load(store), now).sort((a, b) => Date.parse(b.at) - Date.parse(a.at));
 }
 
 /**
@@ -130,12 +140,13 @@ export function recordVisit(
   if (placeId === "") {
     return;
   }
-  const kept = load(store).filter((v) => v.placeId !== placeId);
+  const kept = withoutExpired(load(store), now).filter((v) => v.placeId !== placeId);
   save(store, [...kept, { placeId, placeName, at: now.toISOString() }]);
 }
 
-export function forgetVisit(store: Store | null, placeId: string): void {
-  save(store, load(store).filter((v) => v.placeId !== placeId));
+/** now는 readVisits·recordVisit과 같은 이유로 받는다: 시험이 실제 시계 없이 돈다. */
+export function forgetVisit(store: Store | null, placeId: string, now: Date = new Date()): void {
+  save(store, withoutExpired(load(store), now).filter((v) => v.placeId !== placeId));
 }
 
 export function forgetAll(store: Store | null): void {

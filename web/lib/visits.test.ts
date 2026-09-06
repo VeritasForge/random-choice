@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   browserStore, forgetAll, forgetVisit, readVisits, recordVisit,
   RETENTION_DAYS, STORAGE_KEY, type Store,
@@ -63,6 +63,33 @@ describe("기록 저장과 조회", () => {
     recordVisit(store, "new", "새가게", daysAgo(1));
     const visits = readVisits(store, NOW);
     expect(visits.map((v) => v.placeId)).toEqual(["new"]);
+  });
+
+  // readVisits로 확인하면 이 방어가 있든 없든 통과한다 — 만료된 항목은 읽을 때
+  // 어차피 걸러지기 때문이다. 그래서 저장소에 실제로 쓰인 원본 JSON을 직접 본다.
+  it("정할 때 보관 기간 지난 기록은 저장소에서도 함께 지운다", () => {
+    const store = fakeStore({
+      [STORAGE_KEY]: JSON.stringify([
+        { placeId: "old", placeName: "옛가게", at: daysAgo(RETENTION_DAYS + 1).toISOString() },
+        { placeId: "fresh", placeName: "최근가게", at: daysAgo(1).toISOString() },
+      ]),
+    });
+    recordVisit(store, "new", "새가게", NOW);
+    const raw = JSON.parse(store.data[STORAGE_KEY]) as { placeId: string }[];
+    expect(raw.map((v) => v.placeId)).toEqual(["fresh", "new"]);
+  });
+
+  it("지울 때도 보관 기간 지난 기록은 저장소에서 함께 지운다", () => {
+    const store = fakeStore({
+      [STORAGE_KEY]: JSON.stringify([
+        { placeId: "old", placeName: "옛가게", at: daysAgo(RETENTION_DAYS + 1).toISOString() },
+        { placeId: "p1", placeName: "가게1", at: daysAgo(1).toISOString() },
+        { placeId: "p2", placeName: "가게2", at: daysAgo(1).toISOString() },
+      ]),
+    });
+    forgetVisit(store, "p1", NOW);
+    const raw = JSON.parse(store.data[STORAGE_KEY]) as { placeId: string }[];
+    expect(raw.map((v) => v.placeId)).toEqual(["p2"]);
   });
 
   // 기록 화면이 "최근에 정한 곳"부터 보여 줄 수 있어야 한다. 저장은 정한 순서대로
@@ -155,8 +182,29 @@ describe("저장된 값이 망가졌을 때", () => {
 });
 
 describe("브라우저 저장소 얻기", () => {
+  // node에는 원래 localStorage가 없다(전역에 아예 없는 상태). 그래서 시험이 끝나면
+  // "이전 값으로 되돌리기"가 아니라 "지워서 없던 상태로 되돌리기"가 맞다.
+  // vi.unstubAllGlobals가 정확히 그 일을 한다.
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
   it("localStorage가 없는 환경에서는 null을 돌려준다", () => {
     // 시험은 node 환경에서 돈다. localStorage가 없다.
+    expect(browserStore()).toBeNull();
+  });
+
+  it("localStorage가 있으면 그 저장소를 그대로 돌려준다", () => {
+    const store = fakeStore();
+    vi.stubGlobal("localStorage", store);
+    // 감싸거나 복사한 것이 아니라 넘겨준 그 객체인지 참조로 확인한다.
+    expect(browserStore()).toBe(store);
+  });
+
+  it("접근이 예외를 던지면 null을 돌려준다", () => {
+    // 시크릿 창이나 저장소 차단 설정에서는 localStorage 자체는 있지만
+    // 만지는 순간 예외를 던진다.
+    vi.stubGlobal("localStorage", throwingStore());
     expect(browserStore()).toBeNull();
   });
 });
