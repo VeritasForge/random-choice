@@ -1,9 +1,11 @@
 package httpapi
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"math"
 	"net/http"
 	"net/http/httptest"
@@ -183,6 +185,71 @@ func TestNearbyExcludesNonLunchPlaces(t *testing.T) {
 	}
 	if !strings.Contains(rec.Body.String(), "밥집") {
 		t.Error("점심 대상인 가게까지 빠졌다")
+	}
+}
+
+// captureLogs는 기본 기록기를 버퍼로 잠시 갈아 끼우고, 시험이 끝나면 되돌린다.
+// 되돌리기를 t.Cleanup에 걸어 두는 이유: 되돌리지 않으면 뒤에 도는 시험의 로그까지
+// 이 버퍼로 흘러들어, 이 시험이 다른 시험을 조용히 오염시킨다.
+func captureLogs(t *testing.T) *bytes.Buffer {
+	t.Helper()
+	var buf bytes.Buffer
+	prev := slog.Default()
+	slog.SetDefault(slog.New(slog.NewJSONHandler(&buf, nil)))
+	t.Cleanup(func() { slog.SetDefault(prev) })
+	return &buf
+}
+
+// 가게를 버린 이유 둘을 따로 세는지 확인한다.
+//
+// 왜 로그를 대조하는가: 이 결함은 응답 본문에 전혀 드러나지 않는다. 두 이유를 한 숫자로
+// 합쳐도 cuisines·places는 글자 하나 달라지지 않고 오직 로그만 달라진다. 그래서 로그를
+// 보는 이 시험이 유일한 방어다. 본문만 보는 시험으로 바꾸면 아무것도 지키지 못한다.
+//
+// 치르는 대가: 이 시험은 로그 문구에 묶인다. 문구를 다듬으면 아래 부분 문자열도 함께
+// 고쳐야 한다. 그래서 수치나 조사까지 묶지 않고 안정적인 조각만 본다.
+//
+// t.Parallel을 쓰지 않는다. 기본 기록기라는 전역을 갈아 끼우므로, 병렬로 돌면
+// 서로의 버퍼를 덮어 결과가 뒤섞인다.
+func TestNearbyCountsDropReasonsSeparately(t *testing.T) {
+	// 함께 넣는 정상 가게. 이것이 없으면 "하나도 뽑지 못했다"는 다른 갈래로 빠져
+	// 두 이유를 가르는지와 무관한 것을 보게 된다.
+	bapjip := kakao.Place{ID: "2", Name: "밥집", CategoryName: "음식점 > 한식",
+		Distance: 60, Lat: 37.4, Lng: 127.0}
+
+	tests := []struct {
+		name    string
+		dropped kakao.Place
+		wantLog bool
+	}{
+		{
+			// 술집을 빼는 것은 의도한 동작이고 실측에서 14%였다. 여기서 경고가 뜨면
+			// 거의 매 요청마다 뜨는 셈이라, 아래의 드문 신호가 그 안에 묻힌다.
+			name: "점심 대상이 아니어서 뺐으면 경고하지 않는다",
+			dropped: kakao.Place{ID: "1", Name: "위스키바", CategoryName: "음식점 > 술집 > 칵테일바",
+				Distance: 50, Lat: 37.4, Lng: 127.0},
+			wantLog: false,
+		},
+		{
+			// 맞는 규칙이 없는 것은 우리 어휘에 구멍이 있다는 신호다. 실측 664곳 중
+			// 3곳뿐이라, 이 한 줄이 뜨지 않으면 구멍을 알아챌 방법이 없다.
+			name: "맞는 규칙이 없어 뺐으면 경고한다",
+			dropped: kakao.Place{ID: "1", Name: "모르는곳", CategoryName: "음식점 > 우주음식",
+				Distance: 50, Lat: 37.4, Lng: 127.0},
+			wantLog: true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			logs := captureLogs(t)
+			finder := &fakeFinder{places: []kakao.Place{tt.dropped, bapjip}}
+			get(t, NewHandler(finder), "/api/v1/nearby?lat=37.4&lng=127.0")
+
+			if got := strings.Contains(logs.String(), "맞는 규칙이 없어"); got != tt.wantLog {
+				t.Errorf("\"맞는 규칙이 없어\" 경고 = %v, want %v. 로그: %s",
+					got, tt.wantLog, logs.String())
+			}
+		})
 	}
 }
 
