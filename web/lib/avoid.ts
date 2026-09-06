@@ -4,7 +4,10 @@ import type { Visit } from "./visits";
 export type AvoidResult = {
   /** 회피를 적용한 뒤 남은 가게. */
   places: Place[];
-  /** 실제로 뺀 가게 수. 0이면 화면은 안내 줄을 그리지 않는다. */
+  /**
+   * 실제로 뺀 가게 수. 0이면 화면은 안내 줄을 그리지 않는다.
+   * 단 released가 true인 회차의 0은 "뺄 것이 없었다"는 사실이 아니라 관례이므로, 화면은 released를 먼저 봐야 한다.
+   */
   removed: number;
   /** 전부 빠져서 이번만 회피를 풀었으면 true. */
   released: boolean;
@@ -30,6 +33,7 @@ export function avoidVisited(
 ): AvoidResult {
   // 배열을 복사해서 돌려준다. 넣어 준 것을 그대로 돌려주면 화면이 결과를 제자리
   // 정렬하는 순간 호출자의 원본까지 뒤집힌다. 아래 "이번만 푼다" 분기도 같다.
+  // 끈 경우와 목록이 빈 경우를 한 줄로 묶어도 정보가 사라지지 않는다 — 호출자는 enabled도 목록 길이도 이미 알고 있어서, 어느 쪽이었는지 되물을 일이 없다.
   if (!enabled || places.length === 0) {
     return { places: [...places], removed: 0, released: false };
   }

@@ -1,9 +1,10 @@
 type Props = {
   onStart: () => void;
   loading: boolean;
+  onShowVisits: () => void;
 };
 
-export default function StartScreen({ onStart, loading }: Props) {
+export default function StartScreen({ onStart, loading, onShowVisits }: Props) {
   return (
     <section className="flex flex-col items-center gap-6 text-center">
       <h1 className="text-3xl font-bold tracking-tight sm:text-4xl">
@@ -32,6 +33,22 @@ export default function StartScreen({ onStart, loading }: Props) {
         }`}
       >
         {loading ? "주변을 살펴보는 중…" : "위치 허용하고 시작하기"}
+      </button>
+      {/*
+        조회 중에는 누르지 못하게 막는다. 막지 않으면 기록 화면으로 넘어간 뒤
+        조회가 끝나는 순간 후보 화면이 그 자리를 빼앗아, 사용자는 자기가 연 화면을
+        잃는다. disabled 대신 aria-disabled를 쓰는 까닭은 위 버튼과 같다 —
+        포커스를 떨어뜨리지 않기 위한 것이다.
+      */}
+      <button
+        type="button"
+        onClick={loading ? undefined : onShowVisits}
+        aria-disabled={loading}
+        className={`text-sm font-medium text-neutral-500 underline underline-offset-4 transition hover:text-neutral-900 dark:hover:text-white ${
+          loading ? "opacity-50" : ""
+        }`}
+      >
+        최근 기록 보기
       </button>
       {/*
         눈에는 보이지 않고 화면 낭독기만 읽는 영역. 로딩이 "시작되는 것"을 소리로 알린다.

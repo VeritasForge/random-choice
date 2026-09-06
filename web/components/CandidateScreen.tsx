@@ -1,4 +1,5 @@
 import type { Cuisine } from "@/lib/api";
+import { countLabel } from "@/lib/reasons";
 
 type Props = {
   candidates: Cuisine[];
@@ -26,9 +27,16 @@ export default function CandidateScreen({
             key={cuisine.id}
             type="button"
             onClick={() => onChoose(cuisine)}
-            className="flex min-h-28 items-center justify-center rounded-2xl border border-neutral-200 bg-white p-4 text-center text-base font-semibold break-keep transition hover:border-neutral-900 dark:border-neutral-800 dark:bg-neutral-900 dark:hover:border-white"
+            className="flex min-h-28 flex-col items-center justify-center gap-1 rounded-2xl border border-neutral-200 bg-white p-4 text-center text-base font-semibold break-keep transition hover:border-neutral-900 dark:border-neutral-800 dark:bg-neutral-900 dark:hover:border-white"
           >
-            {cuisine.label}
+            <span>{cuisine.label}</span>
+            {/*
+              곳 수를 함께 적는 이유: 한 곳뿐인 종류를 고르면 "다른 가게 보기"가
+              아예 붙지 않는데, 그 사정을 미리 알리지 않으면 고른 뒤에야 알게 된다.
+            */}
+            <span className="text-xs font-normal text-neutral-500">
+              {countLabel(cuisine.count)}
+            </span>
           </button>
         ))}
       </div>

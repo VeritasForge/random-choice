@@ -1,9 +1,21 @@
 import type { Place } from "@/lib/api";
+import { distanceLabel } from "@/lib/reasons";
 
 type Props = {
   cuisine: string;
   places: Place[];
   total: number;
+  /** 회피가 무엇을 했는지 알리는 한 줄. null이면 줄 자체를 그리지 않는다(web/lib/reasons.ts). */
+  notice: string | null;
+  /**
+   * 뺀 가게를 다시 넣는 손잡이. 되돌릴 것이 없으면 null이고, 그때는 버튼을 그리지 않는다 —
+   * 전부 빠져 이번만 회피를 푼 회차는 안내 줄은 뜨지만 이미 전부 보여 주고 있어서
+   * "다시 넣기"가 넣을 것이 없다. 그런 버튼을 두면 눌러도 화면이 그대로라 고장으로 보인다.
+   */
+  onRestore: (() => void) | null;
+  onDecide: (place: Place) => void;
+  /** 이미 기록해 둔 장소 ID. 여기 있는 가게에는 버튼 대신 "정하신 곳"을 그린다. */
+  decidedIds: readonly string[];
   onReshuffle: () => void;
   onRestart: () => void;
 };
@@ -20,19 +32,66 @@ const FEW = 2;
 
 const ROW_CLASS =
   "flex items-center justify-between gap-3 rounded-xl border border-neutral-200 p-4 dark:border-neutral-800";
-const LINK_CLASS = `${ROW_CLASS} transition hover:border-neutral-900 dark:hover:border-white`;
 const BUTTON_CLASS =
   "rounded-full border border-neutral-300 px-6 py-3 text-sm font-medium transition hover:bg-neutral-100 dark:border-neutral-700 dark:hover:bg-neutral-800";
+const SMALL_BUTTON_CLASS =
+  "shrink-0 rounded-full border border-neutral-300 px-3 py-2 text-xs font-medium transition hover:bg-neutral-100 dark:border-neutral-700 dark:hover:bg-neutral-800";
 
+/**
+ * 상호·주소·거리를 담은 줄. 상호만 링크로 만드는 이유: 옆에 "여기로 정했어요" 버튼이
+ * 서는데, 버튼을 링크 안에 넣으면 HTML이 허락하지 않는 중첩이 되어 키보드·낭독기가
+ * 둘 중 하나를 제대로 집지 못한다. 그래서 줄 전체가 아니라 상호만 링크다.
+ */
 function PlaceRow({ place }: { place: Place }) {
   return (
-    <>
-      <span className="flex min-w-0 flex-col">
+    <span className="flex min-w-0 flex-col gap-0.5">
+      {/*
+        카카오가 place_url을 비워 보내는 경우가 있다(시험 자료에도 그 경우가 있다).
+        빈 문자열을 href에 넣으면 브라우저가 "현재 문서"로 해석한다. 새 탭에서
+        열리므로 지금 보고 있는 결과를 잃지는 않지만, 이 앱이 처음부터 다시
+        열릴 뿐이라 사용자에게는 고장으로 보인다. 주소가 없으면 링크가 아니라
+        그냥 글자로 그린다.
+      */}
+      {place.placeUrl ? (
+        <a
+          href={place.placeUrl}
+          target="_blank"
+          rel="noreferrer noopener"
+          className="truncate font-semibold underline-offset-4 transition hover:underline"
+        >
+          {place.name}
+        </a>
+      ) : (
         <span className="truncate font-semibold">{place.name}</span>
-        <span className="truncate text-xs text-neutral-500">{place.roadAddress}</span>
-      </span>
-      <span className="shrink-0 text-sm text-neutral-500">{place.distance}m</span>
-    </>
+      )}
+      <span className="truncate text-xs text-neutral-500">{place.roadAddress}</span>
+      <span className="text-xs text-neutral-500">{distanceLabel(place.distance)}</span>
+    </span>
+  );
+}
+
+function DecideControl({
+  place,
+  decided,
+  onDecide,
+}: {
+  place: Place;
+  decided: boolean;
+  onDecide: (place: Place) => void;
+}) {
+  // 장소 ID가 빈 가게에는 아무것도 그리지 않는다. 조회기는 ID가 빈 가게를 일부러
+  // 살려 두는데(api/internal/kakao/client.go) recordVisit은 빈 ID를 저장하지 않으므로,
+  // 버튼을 두면 눌러도 아무 일이 없다. 없는 편이 죽은 버튼보다 낫다.
+  if (place.id === "") {
+    return null;
+  }
+  if (decided) {
+    return <span className="shrink-0 text-xs font-semibold text-neutral-500">정하신 곳</span>;
+  }
+  return (
+    <button type="button" onClick={() => onDecide(place)} className={SMALL_BUTTON_CLASS}>
+      여기로 정했어요
+    </button>
   );
 }
 
@@ -40,11 +99,33 @@ export default function ResultScreen({
   cuisine,
   places,
   total,
+  notice,
+  onRestore,
+  onDecide,
+  decidedIds,
   onReshuffle,
   onRestart,
 }: Props) {
   return (
     <section className="flex w-full flex-col items-center gap-6">
+      {/*
+        회피가 한 일을 맨 위에서 밝힌다. 조용히 거르면 사용자에게 통제권이 없는 것과
+        같기 때문이다. 뺀 것이 없으면 reasons.ts가 null을 주고, 그때는 줄도 버튼도
+        그리지 않는다 — 기록이 빈 사람에게는 이 화면이 예전 그대로여야 한다.
+      */}
+      {notice !== null ? (
+        <div className="flex w-full flex-col items-center gap-2 rounded-xl bg-neutral-100 p-3 text-center dark:bg-neutral-900">
+          <p className="text-xs leading-relaxed text-neutral-600 dark:text-neutral-400">
+            {notice}
+          </p>
+          {onRestore !== null ? (
+            <button type="button" onClick={onRestore} className={SMALL_BUTTON_CLASS}>
+              다시 넣기
+            </button>
+          ) : null}
+        </div>
+      ) : null}
+
       <div className="flex flex-col items-center gap-2">
         <p className="text-sm text-neutral-500">오늘은</p>
         <h2 className="text-3xl font-bold tracking-tight break-keep">{cuisine}</h2>
@@ -62,28 +143,13 @@ export default function ResultScreen({
           key가 빈 문자열로 겹쳐, React가 목록을 다시 그릴 때 엉뚱한 항목을 재사용한다.
         */}
         {places.map((place, index) => (
-          <li key={place.id || `unknown-${index}`}>
-            {/*
-              카카오가 place_url을 비워 보내는 경우가 있다(시험 자료에도 그 경우가 있다).
-              빈 문자열을 href에 넣으면 브라우저가 "현재 문서"로 해석한다. 새 탭에서
-              열리므로 지금 보고 있는 결과를 잃지는 않지만, 이 앱이 처음부터 다시
-              열릴 뿐이라 사용자에게는 고장으로 보인다. 주소가 없으면 링크가 아니라
-              그냥 목록 항목으로 그린다.
-            */}
-            {place.placeUrl ? (
-              <a
-                href={place.placeUrl}
-                target="_blank"
-                rel="noreferrer noopener"
-                className={LINK_CLASS}
-              >
-                <PlaceRow place={place} />
-              </a>
-            ) : (
-              <div className={ROW_CLASS}>
-                <PlaceRow place={place} />
-              </div>
-            )}
+          <li key={place.id || `unknown-${index}`} className={ROW_CLASS}>
+            <PlaceRow place={place} />
+            <DecideControl
+              place={place}
+              decided={decidedIds.includes(place.id)}
+              onDecide={onDecide}
+            />
           </li>
         ))}
       </ul>
@@ -92,6 +158,7 @@ export default function ResultScreen({
         눈에는 보이지 않고 화면 낭독기만 읽는 영역. 후보 화면과 같은 까닭이다 —
         "다른 가게 보기"는 화면 이름을 바꾸지 않아 포커스가 움직이지 않으므로,
         이것이 없으면 낭독기 사용자는 버튼을 누르고도 목록이 바뀌었는지 알 수 없다.
+        "다시 넣기"도 같은 화면 안에서 목록만 바꾸므로 여기에 기댄다.
       */}
       <p role="status" aria-live="polite" className="sr-only">
         {places.map((place) => place.name).join(", ")}
