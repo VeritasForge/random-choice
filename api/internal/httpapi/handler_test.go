@@ -7,6 +7,7 @@ import (
 	"math"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/VeritasForge/random-choice/api/internal/kakao"
@@ -21,7 +22,7 @@ type fakeFinder struct {
 	gotRad int
 }
 
-func (f *fakeFinder) SearchRestaurants(_ context.Context, lat, lng float64, radius int) ([]kakao.Place, error) {
+func (f *fakeFinder) SearchAround(_ context.Context, lat, lng float64, radius int) ([]kakao.Place, error) {
 	f.gotLat, f.gotLng, f.gotRad = lat, lng, radius
 	return f.places, f.err
 }
@@ -56,13 +57,13 @@ func TestNearbyReturnsCuisinesAndPlaces(t *testing.T) {
 
 	var body struct {
 		Cuisines []struct {
-			Name  string `json:"name"`
+			ID    string `json:"id"`
 			Count int    `json:"count"`
 		} `json:"cuisines"`
 		Places []struct {
-			ID       string `json:"id"`
-			Cuisine  string `json:"cuisine"`
-			Distance int    `json:"distance"`
+			ID        string `json:"id"`
+			CuisineID string `json:"cuisineId"`
+			Distance  int    `json:"distance"`
 		} `json:"places"`
 	}
 	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
@@ -72,8 +73,8 @@ func TestNearbyReturnsCuisinesAndPlaces(t *testing.T) {
 	if len(body.Cuisines) != 2 {
 		t.Fatalf("음식 종류가 %d개다. 2개여야 한다: %+v", len(body.Cuisines), body.Cuisines)
 	}
-	if body.Cuisines[0].Name != "한식" || body.Cuisines[0].Count != 2 {
-		t.Errorf("첫 종류가 %+v다. 개수가 많은 \"한식\" 2개가 먼저여야 한다", body.Cuisines[0])
+	if body.Cuisines[0].ID != "gogi" || body.Cuisines[0].Count != 2 {
+		t.Errorf("첫 종류가 %+v다. 개수가 많은 \"gogi\" 2개가 먼저여야 한다", body.Cuisines[0])
 	}
 	if len(body.Places) != 3 {
 		t.Fatalf("가게가 %d곳이다. 3곳이어야 한다", len(body.Places))
@@ -81,8 +82,8 @@ func TestNearbyReturnsCuisinesAndPlaces(t *testing.T) {
 	if body.Places[0].ID != "2" {
 		t.Errorf("첫 가게가 %q다. 가장 가까운 \"2\"여야 한다", body.Places[0].ID)
 	}
-	if body.Places[0].Cuisine != "분식" {
-		t.Errorf("첫 가게의 음식 종류가 %q다. \"분식\"이어야 한다", body.Places[0].Cuisine)
+	if body.Places[0].CuisineID != "bunsik" {
+		t.Errorf("첫 가게의 음식 종류가 %q다. \"bunsik\"이어야 한다", body.Places[0].CuisineID)
 	}
 }
 
@@ -111,7 +112,7 @@ func TestNearbyDropsPlacesWithoutCuisine(t *testing.T) {
 
 	var body struct {
 		Cuisines []struct {
-			Name  string `json:"name"`
+			ID    string `json:"id"`
 			Count int    `json:"count"`
 		} `json:"cuisines"`
 		Places []struct {
@@ -123,10 +124,65 @@ func TestNearbyDropsPlacesWithoutCuisine(t *testing.T) {
 		t.Errorf("음식 종류를 만들 수 없는 가게는 빼야 한다. 받은 값: %+v", body.Places)
 	}
 	// 집계 쪽도 함께 확인한다. 가게 목록에서만 빼고 집계에 남기면
-	// 이름이 빈 종류가 후보로 뽑혀 글자 없는 버튼이 그려지고,
+	// 식별자가 빈 종류가 후보로 뽑혀 글자 없는 버튼이 그려지고,
 	// 그것을 누르면 해당하는 가게가 하나도 없는 막다른 화면이 나온다.
-	if len(body.Cuisines) != 1 || body.Cuisines[0].Name != "분식" || body.Cuisines[0].Count != 1 {
-		t.Errorf("빈 이름이 집계에 남으면 안 된다. 받은 값: %+v", body.Cuisines)
+	if len(body.Cuisines) != 1 || body.Cuisines[0].ID != "bunsik" || body.Cuisines[0].Count != 1 {
+		t.Errorf("빈 식별자가 집계에 남으면 안 된다. 받은 값: %+v", body.Cuisines)
+	}
+}
+
+// 응답이 종류 식별자와 표시 이름을 나눠 실어야 한다.
+// 화면이 저장하는 것은 id이고 그리는 것은 label이다. 둘을 나누지 않으면
+// 저장되는 값이 카카오 문자열이 되어 이용 정책에 걸린다.
+func TestNearbyResponseCarriesCuisineIDAndLabel(t *testing.T) {
+	finder := &fakeFinder{places: []kakao.Place{
+		{ID: "1", Name: "고깃집", CategoryName: "음식점 > 한식 > 육류,고기",
+			Lat: 37.4, Lng: 127.0, Distance: 100},
+	}}
+	rec := get(t, NewHandler(finder), "/api/v1/nearby?lat=37.4&lng=127.0&radius=500")
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("상태 = %d, want 200. 본문: %s", rec.Code, rec.Body.String())
+	}
+	var got struct {
+		Cuisines []struct {
+			ID    string `json:"id"`
+			Label string `json:"label"`
+			Count int    `json:"count"`
+		} `json:"cuisines"`
+		Places []struct {
+			CuisineID string `json:"cuisineId"`
+		} `json:"places"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatalf("응답을 읽지 못했다: %v", err)
+	}
+	if len(got.Cuisines) != 1 || got.Cuisines[0].ID != "gogi" {
+		t.Fatalf("cuisines = %+v, want id=gogi 하나", got.Cuisines)
+	}
+	if got.Cuisines[0].Label != "고기·구이" {
+		t.Errorf("label = %q, want 고기·구이", got.Cuisines[0].Label)
+	}
+	if len(got.Places) != 1 || got.Places[0].CuisineID != "gogi" {
+		t.Errorf("places[0].cuisineId = %+v, want gogi", got.Places)
+	}
+}
+
+// 점심 대상이 아닌 가게는 응답에 없어야 한다.
+func TestNearbyExcludesNonLunchPlaces(t *testing.T) {
+	finder := &fakeFinder{places: []kakao.Place{
+		{ID: "1", Name: "위스키바", CategoryName: "음식점 > 술집 > 칵테일바",
+			Lat: 37.4, Lng: 127.0, Distance: 50},
+		{ID: "2", Name: "밥집", CategoryName: "음식점 > 한식",
+			Lat: 37.4, Lng: 127.0, Distance: 60},
+	}}
+	rec := get(t, NewHandler(finder), "/api/v1/nearby?lat=37.4&lng=127.0&radius=500")
+
+	if strings.Contains(rec.Body.String(), "위스키바") {
+		t.Error("술집이 결과에 들어 있다. 점심에 위스키바를 권하면 안 된다")
+	}
+	if !strings.Contains(rec.Body.String(), "밥집") {
+		t.Error("점심 대상인 가게까지 빠졌다")
 	}
 }
 

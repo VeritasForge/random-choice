@@ -29,18 +29,19 @@ const internalErrorBody = `{"error":"internal_error","message":"서버가 응답
 // PlaceFinder는 주변 음식점을 찾아 주는 무언가다.
 // 실제로는 카카오 조회기가, 시험에서는 가짜가 들어간다.
 type PlaceFinder interface {
-	SearchRestaurants(ctx context.Context, lat, lng float64, radius int) ([]kakao.Place, error)
+	SearchAround(ctx context.Context, lat, lng float64, radius int) ([]kakao.Place, error)
 }
 
 type cuisineDTO struct {
-	Name  string `json:"name"`
+	ID    string `json:"id"`
+	Label string `json:"label"`
 	Count int    `json:"count"`
 }
 
 type placeDTO struct {
 	ID          string  `json:"id"`
 	Name        string  `json:"name"`
-	Cuisine     string  `json:"cuisine"`
+	CuisineID   string  `json:"cuisineId"`
 	Distance    int     `json:"distance"`
 	RoadAddress string  `json:"roadAddress"`
 	Phone       string  `json:"phone"`
@@ -110,7 +111,7 @@ func handleNearby(w http.ResponseWriter, r *http.Request, finder PlaceFinder) {
 		return
 	}
 
-	found, err := finder.SearchRestaurants(r.Context(), lat, lng, radius)
+	found, err := finder.SearchAround(r.Context(), lat, lng, radius)
 	if err != nil {
 		// 사용자가 창을 닫거나 브라우저가 요청을 취소한 경우다. 흔한 정상 동작이므로
 		// 카카오 장애와 같은 등급(Error)으로 쌓이면 진짜 실패가 그 잡음에 묻힌다.
@@ -199,30 +200,35 @@ func parseRadius(r *http.Request) (int, bool) {
 	return radius, true
 }
 
-// buildResponse는 조회 결과를 화면이 쓰기 좋은 형태로 옮긴다.
+// buildResponse는 조회 결과를 응답 형태로 옮긴다.
 // 음식 종류를 만들 수 없는 가게는 뺀다. 화면이 종류로 걸러 내기 때문에
 // 종류가 없는 가게는 어느 화면에도 나타나지 못한다.
 //
-// 버린 건수를 로그에 남기는 이유: 전부 버려지면 응답은 빈 목록이 되고,
-// 화면은 그것을 "주변에 음식점이 없어요"로 보여 준다. 가게는 있었는데
-// 하나도 분류하지 못한 것과 정말로 없는 것이 사용자에게 똑같이 보이므로,
-// 서버 쪽에라도 구분이 남아 있어야 원인을 찾을 수 있다.
+// 버린 건수를 이유별로 나눠 세는 이유: "점심 대상 아님"은 실측에서 14%였고 거의 매
+// 요청마다 생기는 의도된 동작이다. "맞는 규칙 없음"은 실측 664곳 중 3곳뿐이었지만
+// 우리 어휘에 구멍이 있다는 신호다. 한 숫자로 합치면 경고가 늘 켜져 있게 되어
+// 정작 중요한 신호가 그 안에 묻힌다.
 func buildResponse(found []kakao.Place) nearbyResponse {
 	places := make([]placeDTO, 0, len(found))
-	names := make([]string, 0, len(found))
-	dropped := 0
+	cuisines := make([]cuisine.Cuisine, 0, len(found))
+	notLunch, noRule := 0, 0
 
 	for _, place := range found {
-		name := cuisine.Extract(place.CategoryName)
-		if name == "" {
-			dropped++
+		c, ok, reason := cuisine.ClassifyWithReason(place.CategoryName)
+		if !ok {
+			switch reason {
+			case cuisine.DropNotLunch:
+				notLunch++
+			case cuisine.DropNoRule:
+				noRule++
+			}
 			continue
 		}
-		names = append(names, name)
+		cuisines = append(cuisines, c)
 		places = append(places, placeDTO{
 			ID:          place.ID,
 			Name:        place.Name,
-			Cuisine:     name,
+			CuisineID:   c.ID,
 			Distance:    place.Distance,
 			RoadAddress: place.RoadAddress,
 			Phone:       place.Phone,
@@ -236,25 +242,32 @@ func buildResponse(found []kakao.Place) nearbyResponse {
 	case len(found) == 0:
 		// 카카오가 한 곳도 주지 않은 경우는 handleNearby가 반경과 함께 남긴다.
 	case len(places) == 0:
-		// 가게는 받았는데 하나도 분류하지 못했다. 카카오가 분류 문자열 형식을
-		// 바꿨다는 신호일 수 있다.
-		slog.Error("음식 종류를 하나도 뽑지 못했습니다", "dropped", dropped)
-	case dropped > 0:
-		slog.Warn("음식 종류를 뽑지 못한 가게를 제외했습니다",
-			"dropped", dropped, "total", len(found))
+		// 전부 버려지면 응답은 빈 목록이 되고, 화면은 그것을 "주변에 음식점이
+		// 없어요"로 보여 준다. 정말로 없는 것과 구분이 서버 쪽에라도 남아야 한다.
+		slog.Error("음식 종류를 하나도 뽑지 못했습니다",
+			"notLunch", notLunch, "noRule", noRule, "total", len(found))
+	case noRule > 0:
+		// 이쪽이 진짜 신호다. 카카오가 분류 문자열 형식을 바꿨거나
+		// 우리 어휘가 못 덮는 분류가 늘었다는 뜻이다.
+		slog.Warn("맞는 규칙이 없어 뺀 가게가 있습니다",
+			"noRule", noRule, "total", len(found))
 	}
 
+	// 가까운 순으로 보내는 것은 이 응답이 처음부터 해 온 약속이다.
+	// 지금은 kakao.SearchAround도 합친 결과를 거리로 정렬해 주지만 그것은 조회기 쪽
+	// 사정이라, 조회기를 갈아 끼우면 약속만 조용히 사라진다. 약속은 약속하는
+	// 자리에서 지킨다 — handler_test.go의 TestNearbyReturnsCuisinesAndPlaces가
+	// 정렬되지 않은 가짜로 그것을 확인한다.
 	sort.SliceStable(places, func(i, j int) bool {
 		return places[i].Distance < places[j].Distance
 	})
 
-	tallies := cuisine.CountByName(names)
-	cuisines := make([]cuisineDTO, 0, len(tallies))
-	for _, tally := range tallies {
-		cuisines = append(cuisines, cuisineDTO{Name: tally.Name, Count: tally.Count})
+	tallies := cuisine.CountBy(cuisines)
+	dtos := make([]cuisineDTO, 0, len(tallies))
+	for _, t := range tallies {
+		dtos = append(dtos, cuisineDTO{ID: t.Cuisine.ID, Label: t.Cuisine.Label, Count: t.Count})
 	}
-
-	return nearbyResponse{Cuisines: cuisines, Places: places}
+	return nearbyResponse{Cuisines: dtos, Places: places}
 }
 
 // writeJSON은 본문을 먼저 만들고, 성공했을 때만 상태 코드와 함께 보낸다.
