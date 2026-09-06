@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { avoidNotice, countLabel, distanceLabel } from "./reasons";
+import { avoidNotice, canRestore, countLabel, distanceLabel } from "./reasons";
 
 describe("거리 문구", () => {
   it("미터와 도보 시간을 함께 보여 준다", () => {
@@ -65,5 +65,28 @@ describe("회피 안내", () => {
     expect(avoidNotice(3, true)).toBe(
       "여기 있는 곳은 모두 최근에 정하신 곳이라 이번엔 그대로 보여 드려요",
     );
+  });
+});
+
+describe("되돌리기 손잡이를 줄지", () => {
+  it("뺀 것이 없으면 되돌릴 것도 없다", () => {
+    expect(canRestore(0, false)).toBe(false);
+  });
+
+  it("뺀 것이 있으면 되돌릴 수 있다", () => {
+    expect(canRestore(2, false)).toBe(true);
+  });
+
+  // 이번만 푼 회차는 이미 전부 보여 주고 있어서 되돌릴 것이 없다.
+  it("이번만 푼 회차에는 손잡이를 주지 않는다", () => {
+    expect(canRestore(0, true)).toBe(false);
+  });
+
+  // avoidNotice와 같은 까닭이다. avoid.ts가 지금 released 회차의 removed를 0으로
+  // 돌려주는 것은 관례일 뿐이므로, 그 관례가 바뀌어도 이 판정이 흔들리면 안 된다.
+  // released 분기를 removed 분기 뒤로 옮기면 이 시험이 true를 돌려받아 실패한다 —
+  // 즉 누를 것이 없는 "다시 넣기" 버튼이 그려지기 시작한다.
+  it("released가 참이면 removed 값과 무관하게 손잡이를 주지 않는다", () => {
+    expect(canRestore(3, true)).toBe(false);
   });
 });

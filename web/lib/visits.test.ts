@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
-  browserStore, forgetAll, forgetVisit, readVisits, recordVisit,
-  RETENTION_DAYS, STORAGE_KEY, type Store,
+  AVOID_KEY, browserStore, forgetAll, forgetVisit, readAvoidOn, readVisits, recordVisit,
+  RETENTION_DAYS, STORAGE_KEY, writeAvoidOn, type Store,
 } from "./visits";
 
 /** 시험용 저장소. 실제 localStorage 대신 넘긴다. */
@@ -178,6 +178,73 @@ describe("저장된 값이 망가졌을 때", () => {
   it("배열이 아니면 빈 목록을 돌려준다", () => {
     const store = fakeStore({ [STORAGE_KEY]: JSON.stringify({ placeId: "p1" }) });
     expect(readVisits(store, NOW)).toEqual([]);
+  });
+});
+
+describe("회피 스위치 저장", () => {
+  it("저장된 것이 없으면 켜짐이다", () => {
+    // 아무 설정도 하지 않은 사람에게 이 서비스의 목적(관성 깨기)이 기본으로 가야 한다.
+    expect(readAvoidOn(fakeStore())).toBe(true);
+  });
+
+  it("끈 것을 저장하고 그대로 다시 읽는다", () => {
+    const store = fakeStore();
+    writeAvoidOn(store, false);
+    expect(readAvoidOn(store)).toBe(false);
+  });
+
+  it("껐다가 다시 켠 것도 그대로 읽는다", () => {
+    // false만 확인하면 "항상 false를 돌려주는" 구현도 통과한다.
+    const store = fakeStore();
+    writeAvoidOn(store, false);
+    writeAvoidOn(store, true);
+    expect(readAvoidOn(store)).toBe(true);
+  });
+
+  // 기록과 설정을 한 열쇠에 담으면 "전체 지우기"가 설정까지 지운다.
+  // 지우는 대상은 다녀온 곳이지 사용자가 고른 설정이 아니다.
+  it("기록을 전부 지워도 스위치 설정은 남는다", () => {
+    const store = fakeStore();
+    recordVisit(store, "p1", "가게1", NOW);
+    writeAvoidOn(store, false);
+    forgetAll(store);
+    expect(readVisits(store, NOW)).toHaveLength(0);
+    expect(readAvoidOn(store)).toBe(false);
+  });
+
+  it("가게를 기록해도 스위치 설정을 덮어쓰지 않는다", () => {
+    const store = fakeStore();
+    writeAvoidOn(store, false);
+    recordVisit(store, "p1", "가게1", NOW);
+    expect(readAvoidOn(store)).toBe(false);
+  });
+
+  it("읽기가 예외를 던지면 켜짐으로 본다", () => {
+    expect(readAvoidOn(throwingStore())).toBe(true);
+  });
+
+  it("쓰기가 예외를 던져도 터지지 않는다", () => {
+    expect(() => writeAvoidOn(throwingStore(), false)).not.toThrow();
+  });
+
+  it("저장소가 없어도(null) 켜짐으로 보고 터지지 않는다", () => {
+    expect(readAvoidOn(null)).toBe(true);
+    expect(() => writeAvoidOn(null, false)).not.toThrow();
+  });
+
+  // 사람이 손으로 고쳤거나 다른 판본이 남긴 값이다. 이것을 "꺼짐"으로 읽으면
+  // 사용자가 끈 적 없는 회피가 조용히 꺼진다.
+  it("JSON이 아니면 켜짐으로 본다", () => {
+    expect(readAvoidOn(fakeStore({ [AVOID_KEY]: "{{{" }))).toBe(true);
+  });
+
+  it("boolean이 아닌 값이면 켜짐으로 본다", () => {
+    // "false"라는 **문자열**은 JSON으로 읽히기는 하지만 boolean이 아니다.
+    // 타입 검사 없이 그대로 돌려주면 문자열 "false"가 참으로 취급되어
+    // 화면에는 켜짐으로 보이는데 값은 문자열인 어긋난 상태가 된다.
+    expect(readAvoidOn(fakeStore({ [AVOID_KEY]: JSON.stringify("false") }))).toBe(true);
+    expect(readAvoidOn(fakeStore({ [AVOID_KEY]: JSON.stringify(0) }))).toBe(true);
+    expect(readAvoidOn(fakeStore({ [AVOID_KEY]: JSON.stringify(null) }))).toBe(true);
   });
 });
 

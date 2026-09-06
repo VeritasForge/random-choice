@@ -55,3 +55,23 @@ export function avoidNotice(removed: number, released: boolean): string | null {
   }
   return `지난번에 정하신 곳 ${removed}곳은 빼고 골랐어요`;
 }
+
+/**
+ * 뺀 가게를 "다시 넣기"로 되돌릴 수 있는지. 화면은 이 값이 참일 때만 그 버튼을 그린다.
+ *
+ * **released를 먼저 보는 것이 이 함수가 존재하는 이유다.** 이번만 회피를 푼 회차는
+ * 이미 모든 가게를 보여 주고 있어서 되돌릴 것이 없는데, avoid.ts가 그 회차의
+ * removed를 0으로 돌려주는 것은 "뺄 것이 없었다"는 사실이 아니라 관례다.
+ * 그 관례가 바뀌어 removed에 실제 수가 채워지면, released를 보지 않는 판정은
+ * 누를 것이 없는 버튼을 그리기 시작한다 — 눌러도 화면이 그대로라 고장으로 보인다.
+ *
+ * 이 규칙을 화면 쪽 삼항 연산자로 두지 않고 여기로 가져온 이유: 안내 문구를 고르는
+ * 규칙(avoidNotice)과 되돌리기 손잡이를 주는 규칙은 같은 사실을 보고 판단하므로,
+ * 떨어져 있으면 한쪽만 고쳐져 서로 어긋난다. 시험이 붙는 자리이기도 하다.
+ */
+export function canRestore(removed: number, released: boolean): boolean {
+  if (released) {
+    return false;
+  }
+  return removed > 0;
+}

@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState } from "react";
 import type { Place } from "@/lib/api";
 import { distanceLabel } from "@/lib/reasons";
 
@@ -8,11 +9,18 @@ type Props = {
   /** 회피가 무엇을 했는지 알리는 한 줄. null이면 줄 자체를 그리지 않는다(web/lib/reasons.ts). */
   notice: string | null;
   /**
-   * 뺀 가게를 다시 넣는 손잡이. 되돌릴 것이 없으면 null이고, 그때는 버튼을 그리지 않는다 —
-   * 전부 빠져 이번만 회피를 푼 회차는 안내 줄은 뜨지만 이미 전부 보여 주고 있어서
-   * "다시 넣기"가 넣을 것이 없다. 그런 버튼을 두면 눌러도 화면이 그대로라 고장으로 보인다.
+   * 회피가 켜져 있는지.
+   *
+   * 꺼졌다는 사실을 이 화면이 말해야 하는 이유: 회피가 켜져 있을 때는 "무엇을 했는지
+   * 알리고 되돌릴 수 있게 한다"를 지키면서 꺼져 있을 때는 안 지키면, 사용자는 자기가
+   * 만든 상태를 모르는 채로 남는다. 껐다는 것을 알 길도, 결과 화면에서 되돌릴 길도
+   * 없어지기 때문이다.
    */
-  onRestore: (() => void) | null;
+  avoidOn: boolean;
+  /** 뺀 가게를 다시 넣을 수 있는지. 판정 규칙은 web/lib/reasons.ts의 canRestore가 갖는다. */
+  canRestore: boolean;
+  /** 회피를 켜고 끈다. "다시 넣기"와 "다시 켜기"가 같은 것을 부른다 — 방향만 반대다. */
+  onToggleAvoid: () => void;
   onDecide: (place: Place) => void;
   /** 이미 기록해 둔 장소 ID. 여기 있는 가게에는 버튼 대신 "정하신 곳"을 그린다. */
   decidedIds: readonly string[];
@@ -73,10 +81,13 @@ function PlaceRow({ place }: { place: Place }) {
 function DecideControl({
   place,
   decided,
+  markRef,
   onDecide,
 }: {
   place: Place;
   decided: boolean;
+  /** 방금 정한 가게일 때만 붙는다. 이 자리로 포커스를 옮기기 위한 것이다. */
+  markRef?: React.Ref<HTMLSpanElement>;
   onDecide: (place: Place) => void;
 }) {
   // 장소 ID가 빈 가게에는 아무것도 그리지 않는다. 조회기는 ID가 빈 가게를 일부러
@@ -86,7 +97,17 @@ function DecideControl({
     return null;
   }
   if (decided) {
-    return <span className="shrink-0 text-xs font-semibold text-neutral-500">정하신 곳</span>;
+    // tabIndex={-1}은 Tab 순서에 넣기 위한 것이 아니라(누를 것이 없으므로 넣으면 안 된다)
+    // 아래 useEffect가 여기로 포커스를 옮길 수 있게 하기 위한 것이다.
+    return (
+      <span
+        ref={markRef}
+        tabIndex={-1}
+        className="shrink-0 text-xs font-semibold text-neutral-500"
+      >
+        정하신 곳
+      </span>
+    );
   }
   return (
     <button type="button" onClick={() => onDecide(place)} className={SMALL_BUTTON_CLASS}>
@@ -100,27 +121,63 @@ export default function ResultScreen({
   places,
   total,
   notice,
-  onRestore,
+  avoidOn,
+  canRestore,
+  onToggleAvoid,
   onDecide,
   decidedIds,
   onReshuffle,
   onRestart,
 }: Props) {
+  // 방금 "여기로 정했어요"를 누른 가게. 그 자리의 버튼이 "정하신 곳" 글자로 바뀌면서
+  // 사라지므로, 포커스를 새 글자로 옮겨 주지 않으면 포커스가 body로 떨어진다.
+  // 그러면 키보드 사용자의 다음 Tab이 문서 맨 처음부터 다시 시작하고,
+  // 화면 낭독기는 아무 말도 하지 않는다 — 이 화면의 통지 영역은 목록의 이름들을
+  // 읽는 것이라 기록해도 내용이 바뀌지 않기 때문이다.
+  // 포커스를 옮기면 낭독기가 새 초점인 "정하신 곳"을 읽어 주어 둘이 한 번에 닫힌다.
+  const [justDecidedId, setJustDecidedId] = useState<string | null>(null);
+  const markRef = useRef<HTMLSpanElement>(null);
+
+  useEffect(() => {
+    if (justDecidedId === null) {
+      return;
+    }
+    // 기록이 막힌 경우(저장소 차단 등)에는 버튼이 그대로 남아 markRef가 비어 있다.
+    // 그때는 포커스가 원래 버튼에 그대로 있으므로 아무것도 하지 않는 것이 맞다.
+    markRef.current?.focus();
+  }, [justDecidedId]);
+
+  function decide(place: Place) {
+    onDecide(place);
+    setJustDecidedId(place.id);
+  }
+
+  // 맨 위에 그릴 안내. 둘은 겹치지 않는다 — 회피가 꺼져 있으면 뺀 것이 없어
+  // notice가 반드시 null이기 때문이다(web/lib/avoid.ts).
+  let banner: { text: string; actionLabel: string | null } | null = null;
+  if (notice !== null) {
+    banner = { text: notice, actionLabel: canRestore ? "다시 넣기" : null };
+  } else if (!avoidOn) {
+    banner = { text: "최근에 정한 곳 빼기가 꺼져 있어요", actionLabel: "다시 켜기" };
+  }
+
   return (
     <section className="flex w-full flex-col items-center gap-6">
       {/*
         회피가 한 일을 맨 위에서 밝힌다. 조용히 거르면 사용자에게 통제권이 없는 것과
-        같기 때문이다. 뺀 것이 없으면 reasons.ts가 null을 주고, 그때는 줄도 버튼도
-        그리지 않는다 — 기록이 빈 사람에게는 이 화면이 예전 그대로여야 한다.
+        같기 때문이다. 회피를 껐을 때도 같은 자리에서 밝힌다 — 켜졌을 때만 알리고
+        껐을 때는 침묵하면, 사용자가 자기가 만든 상태를 모르는 채로 남는다.
+        둘 다 아니면(회피가 켜져 있고 뺀 것도 없으면) 줄 자체를 그리지 않는다.
+        기록이 빈 사람에게는 이 화면이 예전 그대로여야 한다.
       */}
-      {notice !== null ? (
+      {banner !== null ? (
         <div className="flex w-full flex-col items-center gap-2 rounded-xl bg-neutral-100 p-3 text-center dark:bg-neutral-900">
           <p className="text-xs leading-relaxed text-neutral-600 dark:text-neutral-400">
-            {notice}
+            {banner.text}
           </p>
-          {onRestore !== null ? (
-            <button type="button" onClick={onRestore} className={SMALL_BUTTON_CLASS}>
-              다시 넣기
+          {banner.actionLabel !== null ? (
+            <button type="button" onClick={onToggleAvoid} className={SMALL_BUTTON_CLASS}>
+              {banner.actionLabel}
             </button>
           ) : null}
         </div>
@@ -148,7 +205,8 @@ export default function ResultScreen({
             <DecideControl
               place={place}
               decided={decidedIds.includes(place.id)}
-              onDecide={onDecide}
+              markRef={place.id === justDecidedId ? markRef : undefined}
+              onDecide={decide}
             />
           </li>
         ))}

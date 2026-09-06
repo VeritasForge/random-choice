@@ -33,6 +33,19 @@ export type Store = {
 export const STORAGE_KEY = "random-choice.visits.v1";
 
 /**
+ * 회피 스위치를 켰는지 껐는지를 담는 열쇠. 기록과 **다른 열쇠**를 쓴다.
+ *
+ * 기록 항목(Visit)에 필드를 하나 더하는 방법도 있지만 그러면 안 된다. Visit에
+ * 무엇을 담을 수 있는지는 카카오 약관이 정한 것이고(설계 문서 9절), 그 셋 말고
+ * 다른 것을 얹기 시작하면 그 경계가 흐려진다. 설정은 사용자가 만든 값이지
+ * 조회 결과가 아니므로 아예 따로 둔다.
+ *
+ * 기록을 "전체 지우기"로 지워도 이 값은 남는다. 지우는 대상은 다녀온 곳이지
+ * 사용자가 고른 설정이 아니다.
+ */
+export const AVOID_KEY = "random-choice.avoid.v1";
+
+/**
  * 기록을 보관하는 날짜 수.
  *
  * 회피 규칙은 자기 상수를 따로 선언하지 말고 이 값을 그대로 가져다 써야 한다.
@@ -157,5 +170,47 @@ export function forgetAll(store: Store | null): void {
     store.removeItem(STORAGE_KEY);
   } catch {
     // 지우지 못했다. 사용자가 할 수 있는 일이 없다.
+  }
+}
+
+/**
+ * 회피 스위치가 켜져 있는지 읽는다. 저장된 것이 없거나 읽지 못하면 켜짐(true)이다.
+ *
+ * **기본값이 켜짐인 이유**: 이 서비스의 목적이 늘 같은 것을 고르는 관성을 깨는
+ * 것이라, 아무 설정도 하지 않은 사람에게 그 동작이 기본으로 가야 한다.
+ *
+ * **저장하는 이유**: 하루 한 번 쓰는 서비스라 이 값이 세션에만 남으면 껐던 사람이
+ * 다음 날 말없이 켜진 화면을 본다. 그런데 기록 화면은 켜짐/꺼짐을 영구 설정처럼
+ * 보여 주므로, 저장하지 않으면 화면이 거짓말을 하는 셈이 된다.
+ *
+ * boolean이 아닌 값은 전부 켜짐으로 본다. 사람이 손으로 고쳤거나 다른 판본이
+ * 남긴 값일 텐데, 그것을 "꺼짐"으로 읽으면 사용자가 끈 적 없는 회피가 꺼진다 —
+ * 조용히 기능이 사라지는 쪽보다 켜져 있는 쪽이 되돌리기 쉽다.
+ */
+export function readAvoidOn(store: Store | null): boolean {
+  if (store === null) {
+    return true;
+  }
+  try {
+    const raw = store.getItem(AVOID_KEY);
+    if (raw === null) {
+      return true;
+    }
+    const parsed: unknown = JSON.parse(raw);
+    return typeof parsed === "boolean" ? parsed : true;
+  } catch {
+    return true;
+  }
+}
+
+/** 회피 스위치 상태를 저장한다. 저장이 막혀 있어도 조용히 넘어간다(save와 같은 까닭). */
+export function writeAvoidOn(store: Store | null, on: boolean): void {
+  if (store === null) {
+    return;
+  }
+  try {
+    store.setItem(AVOID_KEY, JSON.stringify(on));
+  } catch {
+    // 저장하지 못했다. 이번 세션에서는 화면의 값이 맞으므로 그대로 쓴다.
   }
 }

@@ -20,13 +20,15 @@ import { getCurrentPosition, GeoError } from "@/lib/geo";
 import { pickAvoiding, pickDistinct, pickOne } from "@/lib/pick";
 import { pickPlaces, WINDOW_STEP } from "@/lib/places";
 import { DEFAULT_RADIUS, widerThan } from "@/lib/radius";
-import { avoidNotice } from "@/lib/reasons";
+import { avoidNotice, canRestore } from "@/lib/reasons";
 import {
   browserStore,
   forgetAll,
   forgetVisit,
+  readAvoidOn,
   readVisits,
   recordVisit,
+  writeAvoidOn,
   type Store,
   type Visit,
 } from "@/lib/visits";
@@ -95,6 +97,10 @@ export default function Home() {
   const [store] = useState<Store | null>(() => browserStore());
   // 회피 스위치와 기록은 화면 상태(View) 밖에 둔다. View는 화면을 옮길 때마다
   // 통째로 갈아 끼우는 값이라, 그 안에 두면 기록 화면에 다녀오는 것만으로 설정이 날아간다.
+  //
+  // 처음 값이 true인 것은 저장된 설정을 아직 읽기 전이기 때문이다 — 실제 값은
+  // 아래 useEffect가 저장소에서 읽어 덮는다. 기본값을 켜짐으로 두는 까닭은
+  // web/lib/visits.ts의 readAvoidOn에 적어 두었다.
   const [avoidOn, setAvoidOn] = useState(true);
   const [visits, setVisits] = useState<Visit[]>([]);
 
@@ -102,19 +108,22 @@ export default function Home() {
   const screenName = screenNameOf(view);
   const shownScreen = useRef(screenName);
 
-  // 처음 그려진 뒤에 기록을 읽는다. readVisits는 브라우저에만 있는 저장소를 만지므로,
-  // 그리는 중에 읽으면 서버가 만든 HTML과 브라우저의 첫 화면이 달라진다.
+  // 처음 그려진 뒤에 기록과 회피 설정을 읽는다. 둘 다 브라우저에만 있는 저장소를
+  // 만지므로, 그리는 중에 읽으면 서버가 만든 HTML과 브라우저의 첫 화면이 달라진다.
   // 그러면 React가 화면을 통째로 다시 만들고, 아래 포커스 처리가 무효가 된다.
   //
-  // 아래 한 줄에 걸리는 규칙(set-state-in-effect)이 막으려는 것은 되풀이되는 연쇄
+  // 아래 두 줄에 걸리는 규칙(set-state-in-effect)이 막으려는 것은 되풀이되는 연쇄
   // 렌더인데, 여기서 일어나는 것은 마운트 직후 한 번뿐이고 그 한 번이 바로 위에 적은
-  // 값을 사는 대가다. 규칙대로 고치려면 useSyncExternalStore용 구독 장치를 따로
-  // 만들어야 하는데, 그러면 저장소의 열쇠와 형식을 이 파일에 한 번 더 적게 되어
-  // 얻는 것보다 잃는 것이 크다. 기록이 바뀌는 다른 경로(정하기·지우기)는 모두
-  // 사용자 조작 안에서 바꾸므로 이 규칙에 걸리지 않는다.
+  // 값을 사는 대가다. 규칙대로 고치려면 useSyncExternalStore용 구독 장치가 필요한데,
+  // 그것을 둘 자리는 이미 저장소 열쇠를 가진 lib/visits.ts다. 그 파일은 검토가 끝난
+  // 모듈이라 이번 작업에서 크게 건드리지 않기로 했다 — 즉 이 예외는 "달리 방법이
+  // 없어서"가 아니라 "이번 범위 밖이라서"다. 기록과 설정이 바뀌는 다른 경로
+  // (정하기·지우기·스위치)는 모두 사용자 조작 안에서 바꾸므로 이 규칙에 걸리지 않는다.
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
+    /* eslint-disable react-hooks/set-state-in-effect -- 까닭은 바로 위에 적었다 */
     setVisits(readVisits(store));
+    setAvoidOn(readAvoidOn(store));
+    /* eslint-enable react-hooks/set-state-in-effect */
   }, [store]);
 
   // 화면이 바뀌면 포커스를 새 화면 맨 위로 옮긴다. 옮기지 않으면 키보드·화면 낭독기
@@ -228,6 +237,9 @@ export default function Home() {
   function toggleAvoid() {
     const next = !avoidOn;
     setAvoidOn(next);
+    // 저장한다. 하루 한 번 쓰는 서비스라 세션에만 남기면 껐던 사람이 다음 날
+    // 말없이 켜진 화면을 보는데, 기록 화면은 이 값을 영구 설정처럼 보여 준다.
+    writeAvoidOn(store, next);
     if (view.kind !== "result") return;
     // 지금 보고 있는 종류를 새 설정으로 다시 계산한다.
     // 그러지 않으면 스위치를 눌러도 화면이 그대로라 껐는지 켰는지 알 수 없다.
@@ -290,11 +302,12 @@ export default function Home() {
           total={view.pool.length}
           // removed만 보고 판단하지 않는다. 전부 빠져 이번만 푼 회차는 removed가 0으로
           // 오는데(관례다) 실제로는 뺄 것이 있었으므로, released를 먼저 보는
-          // avoidNotice에 둘 다 넘긴다.
+          // avoidNotice·canRestore에 둘 다 넘긴다. 두 판정을 화면 쪽 조건식으로
+          // 흩어 두지 않고 reasons.ts에 모아 둔 까닭은 그 파일에 적어 두었다.
           notice={avoidNotice(view.removed, view.released)}
-          // 되돌릴 것이 실제로 있을 때만 손잡이를 준다. released 회차는 removed가 0이라
-          // 여기서도 null이 되는데, 이미 전부 보여 주고 있으니 그게 맞다.
-          onRestore={view.removed > 0 ? toggleAvoid : null}
+          avoidOn={avoidOn}
+          canRestore={canRestore(view.removed, view.released)}
+          onToggleAvoid={toggleAvoid}
           onDecide={decided}
           decidedIds={visits.map((visit) => visit.placeId)}
           onReshuffle={reshufflePlaces}
