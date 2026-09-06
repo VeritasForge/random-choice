@@ -118,3 +118,67 @@ describe("pickPlaces", () => {
     expect(pool.map((found) => found.name)).toEqual(["먼곳", "중간", "가까운곳"]);
   });
 });
+
+function placeAt(id: string, distance: number): Place {
+  return {
+    id, name: `가게${id}`, cuisineId: "gogi", distance,
+    roadAddress: "길", phone: "", placeUrl: "", lat: 37.4, lng: 127.0,
+  };
+}
+
+// 20곳 중 앞의 8곳만 가깝고 나머지는 멀다.
+const spread = [
+  ...Array.from({ length: 8 }, (_, i) => placeAt(`near${i}`, 50 + i * 10)),
+  ...Array.from({ length: 12 }, (_, i) => placeAt(`far${i}`, 400 + i * 20)),
+];
+
+/** 시험용 난수. 같은 씨앗이면 언제나 같은 수열을 준다. */
+function makeRng(seed: number): Rng {
+  let state = seed + 1;
+  return () => {
+    state = (state * 1103515245 + 12345) % 2147483648;
+    return state / 2147483648;
+  };
+}
+
+describe("가까운 곳 창", () => {
+  // 이 시험이 이 작업의 핵심이다. 없으면 5m 거리에 가게를 두고 326m를 권한다.
+  it("표본이 넓어도 처음에는 가까운 여덟 곳 안에서만 뽑는다", () => {
+    // 난수를 여러 번 다르게 주어도 먼 곳이 섞이지 않아야 한다.
+    for (let seed = 0; seed < 20; seed += 1) {
+      const rng = makeRng(seed);
+      const picked = pickPlaces(spread, 4, [], rng);
+      for (const place of picked) {
+        expect(place.id.startsWith("near")).toBe(true);
+      }
+    }
+  });
+
+  it("창을 넓히면 먼 곳도 나온다", () => {
+    const wide = pickPlaces(spread, 4, [], makeRng(1), spread.length);
+    // 창이 전체면 먼 곳이 섞일 수 있다. 적어도 뽑을 후보가 전체가 되었는지 본다.
+    const anyFar = Array.from({ length: 30 }, (_, s) =>
+      pickPlaces(spread, 4, [], makeRng(s), spread.length),
+    ).flat();
+    expect(anyFar.some((p) => p.id.startsWith("far"))).toBe(true);
+    expect(wide).toHaveLength(4);
+  });
+
+  it("가게가 창보다 적으면 전체에서 뽑는다", () => {
+    const few = spread.slice(0, 3);
+    const picked = pickPlaces(few, 4, [], makeRng(0));
+    expect(picked).toHaveLength(3);
+  });
+
+  it("돌려주는 목록은 가까운 순이다", () => {
+    const picked = pickPlaces(spread, 4, [], makeRng(0));
+    const distances = picked.map((p) => p.distance);
+    expect(distances).toEqual([...distances].sort((a, b) => a - b));
+  });
+
+  it("원본 목록의 순서를 건드리지 않는다", () => {
+    const original = [...spread];
+    pickPlaces(spread, 4, [], makeRng(0));
+    expect(spread).toEqual(original);
+  });
+});
