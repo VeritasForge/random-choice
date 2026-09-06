@@ -13,9 +13,13 @@ import (
 	"math"
 	"net/http"
 	"net/url"
+	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
+
+	"github.com/VeritasForge/random-choice/api/internal/geo"
 )
 
 const (
@@ -118,6 +122,94 @@ type searchResponse struct {
 	Meta      struct {
 		IsEnd bool `json:"is_end"`
 	} `json:"meta"`
+}
+
+// perimeterOffsetM은 둘레 지점을 중심에서 얼마나 옮길지다.
+//
+// 400m인 근거: 2026-09-06 실측에서 네 지역(홍대입구·강남·판교·상계) 모두
+// 중심이 실제로 보는 범위가 반경 100~160m였다. 400m 떨어진 지점의 원은
+// 그것과 만날 수 없어 겹치는 가게가 0곳이었고, 45곳이 약 220곳이 됐다.
+// 새로 나온 가게는 사용자 원위치에서 127~618m(중앙값 194~394m)에 있었다.
+//
+// 이 값이 사용자에게 가장 좋은 거리인지는 확인되지 않았다. 300m나 500m가
+// 나을 수도 있다(설계 문서 14절).
+const perimeterOffsetM = 400.0
+
+// SearchAround는 사용자 위치와 그 둘레 네 지점을 조회해 합친다.
+//
+// 왜 한 지점으로 부족한가: 카카오는 한 조회에 가까운 45곳까지만 준다.
+// 사람이 많은 곳에서는 그 45곳이 반경 100~160m 안에 다 들어가서, 반경을
+// 넓혀도 목록이 같다. 그 상태에서 음식 종류를 잘게 나누면 카드 절반이
+// 가게 한 곳짜리가 된다(실측 43%). 다섯 지점을 보면 6%로 떨어진다.
+//
+// 돌려주는 모든 Place.Distance는 카카오가 준 값이 아니라 사용자가 준
+// lat,lng 기준으로 다시 계산한 값이다. 카카오의 거리는 조회 중심 기준이라
+// 그대로 쓰면 412m가 24m로 표시된다.
+func (c *Client) SearchAround(ctx context.Context, lat, lng float64, radius int) ([]Place, error) {
+	// 중심을 먼저 부른다. 다섯을 한꺼번에 쏘면 우리 요청 하나가 카카오 호출을
+	// 열다섯 개 동시에 내는데, 429가 순간 호출 제한이라면 사용자가 한 명뿐일 때도
+	// 그중 몇 개가 튕긴다. 하필 중심이 튕기면 전체가 실패로 답해진다.
+	center, err := c.SearchRestaurants(ctx, lat, lng, radius)
+	if err != nil {
+		return nil, err
+	}
+
+	type point struct{ lat, lng float64 }
+	offsets := [4][2]float64{
+		{perimeterOffsetM, 0},  // 북
+		{0, perimeterOffsetM},  // 동
+		{-perimeterOffsetM, 0}, // 남
+		{0, -perimeterOffsetM}, // 서
+	}
+	points := make([]point, 0, len(offsets))
+	for _, o := range offsets {
+		pLat, pLng := geo.Offset(lat, lng, o[0], o[1])
+		points = append(points, point{pLat, pLng})
+	}
+
+	// 둘레는 보강이다. 하나가 실패해도 그 지점만 버리고 계속한다 —
+	// 각 지점이 독립적으로 완전하거나 통째로 없으므로, 하나가 빠져도
+	// 남은 것들의 분포는 온전하다.
+	results := make([][]Place, len(points))
+	var wg sync.WaitGroup
+	for i, p := range points {
+		wg.Add(1)
+		go func(i int, p point) {
+			defer wg.Done()
+			found, err := c.SearchRestaurants(ctx, p.lat, p.lng, radius)
+			if err != nil {
+				slog.Warn("둘레 지점 조회에 실패해 그 지점을 건너뜁니다",
+					"error", err.Error())
+				return
+			}
+			results[i] = found
+		}(i, p)
+	}
+	wg.Wait()
+
+	merged := make([]Place, 0, len(center)+len(points)*pageSize*maxPages)
+	seen := make(map[string]struct{}, cap(merged))
+	add := func(places []Place) {
+		for _, p := range places {
+			// 식별자가 빈 건은 중복 판정을 할 수 없다. 하나로 뭉뚱그리면
+			// 멀쩡한 가게들이 사라지므로 그냥 그대로 살린다.
+			if p.ID != "" {
+				if _, duplicate := seen[p.ID]; duplicate {
+					continue
+				}
+				seen[p.ID] = struct{}{}
+			}
+			p.Distance = int(geo.DistanceMeters(lat, lng, p.Lat, p.Lng) + 0.5)
+			merged = append(merged, p)
+		}
+	}
+	add(center)
+	for _, r := range results {
+		add(r)
+	}
+
+	sort.Slice(merged, func(i, j int) bool { return merged[i].Distance < merged[j].Distance })
+	return merged, nil
 }
 
 // SearchRestaurants는 좌표 주변의 음식점을 가까운 순으로 돌려준다.

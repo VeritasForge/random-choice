@@ -4,9 +4,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -781,5 +785,211 @@ func TestSearchRestaurantsReportsPerPageTimeoutWhileReadingErrorBody(t *testing.
 		if strings.Contains(err.Error(), secret) {
 			t.Errorf("오류 문자열에 %q가 들어 있다: %v", secret, err)
 		}
+	}
+}
+
+func writeJSON(t *testing.T, w http.ResponseWriter, body string) {
+	t.Helper()
+	w.Header().Set("Content-Type", "application/json")
+	if _, err := io.WriteString(w, body); err != nil {
+		t.Errorf("가짜 서버가 응답을 쓰지 못했다: %v", err)
+	}
+}
+
+// 다섯 지점을 조회하면 각 지점의 결과가 합쳐져야 한다.
+func TestSearchAroundMergesAllPoints(t *testing.T) {
+	var mu sync.Mutex
+	seenPoints := map[string]bool{}
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		x := r.URL.Query().Get("x")
+		y := r.URL.Query().Get("y")
+		mu.Lock()
+		seenPoints[x+","+y] = true
+		id := len(seenPoints)
+		mu.Unlock()
+		// 지점마다 서로 다른 가게 하나씩. 좌표는 요청한 지점 그대로 둔다.
+		writeJSON(t, w, fmt.Sprintf(`{"documents":[
+			{"id":"p%d","place_name":"가게%d","category_name":"음식점 > 한식",
+			 "phone":"","address_name":"","road_address_name":"길%d","place_url":"",
+			 "x":%q,"y":%q,"distance":"10"}],"meta":{"is_end":true}}`, id, id, id, x, y))
+	}))
+	defer server.Close()
+
+	client := NewClientWithBaseURL("key", server.URL, server.Client())
+	places, err := client.SearchAround(context.Background(), 37.4979, 127.0276, 500)
+	if err != nil {
+		t.Fatalf("SearchAround = %v", err)
+	}
+	if len(places) != 5 {
+		t.Fatalf("받은 가게 %d곳, want 5곳 (지점마다 하나씩)", len(places))
+	}
+	if len(seenPoints) != 5 {
+		t.Errorf("조회한 지점 %d곳, want 5곳", len(seenPoints))
+	}
+}
+
+// 이 시험이 이 작업에서 가장 중요하다.
+// 카카오가 준 distance는 조회 중심 기준이라, 그대로 쓰면 412m가 24m로 표시된다.
+func TestSearchAroundRecomputesDistanceFromUserPosition(t *testing.T) {
+	const userLat, userLng = 37.4979, 127.0276
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		x := r.URL.Query().Get("x")
+		y := r.URL.Query().Get("y")
+		// 어느 지점을 물어도 그 지점 바로 위의 가게를 주고, 거리는 5m라고 답한다.
+		writeJSON(t, w, fmt.Sprintf(`{"documents":[
+			{"id":%q,"place_name":"가게","category_name":"음식점 > 한식",
+			 "phone":"","address_name":"","road_address_name":"길","place_url":"",
+			 "x":%q,"y":%q,"distance":"5"}],"meta":{"is_end":true}}`, x+y, x, y))
+	}))
+	defer server.Close()
+
+	client := NewClientWithBaseURL("key", server.URL, server.Client())
+	places, err := client.SearchAround(context.Background(), userLat, userLng, 500)
+	if err != nil {
+		t.Fatalf("SearchAround = %v", err)
+	}
+
+	var far int
+	for _, p := range places {
+		if p.Distance > far {
+			far = p.Distance
+		}
+	}
+	// 둘레 지점은 사용자로부터 400m 떨어져 있다. 카카오가 5m라고 답했어도
+	// 우리는 400m 가까운 값을 돌려줘야 한다.
+	if far < 350 {
+		t.Errorf("가장 먼 가게가 %dm다. 카카오가 준 거리를 그대로 쓰고 있다 — "+
+			"둘레 지점은 사용자로부터 400m 떨어져 있으므로 400m 안팎이 나와야 한다", far)
+	}
+}
+
+// 실측에서는 겹침이 0이었지만, 음식점이 드문 곳에서는 원이 겹칠 수 있다.
+func TestSearchAroundRemovesDuplicatesByID(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// 어느 지점을 물어도 같은 가게를 준다.
+		writeJSON(t, w, `{"documents":[
+			{"id":"same","place_name":"같은가게","category_name":"음식점 > 한식",
+			 "phone":"","address_name":"","road_address_name":"길","place_url":"",
+			 "x":"127.0276","y":"37.4979","distance":"10"}],"meta":{"is_end":true}}`)
+	}))
+	defer server.Close()
+
+	client := NewClientWithBaseURL("key", server.URL, server.Client())
+	places, err := client.SearchAround(context.Background(), 37.4979, 127.0276, 500)
+	if err != nil {
+		t.Fatalf("SearchAround = %v", err)
+	}
+	if len(places) != 1 {
+		t.Errorf("같은 가게가 %d번 들어 있다, want 1번", len(places))
+	}
+}
+
+// 조회기는 식별자가 빈 가게를 일부러 살려 둔다. 중복 판정을 할 수 없기 때문이다.
+// 지점이 다섯이 되면 이 함정을 밟을 기회도 다섯 배가 된다.
+func TestSearchAroundKeepsPlacesWithEmptyID(t *testing.T) {
+	var n int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		i := atomic.AddInt32(&n, 1)
+		writeJSON(t, w, fmt.Sprintf(`{"documents":[
+			{"id":"","place_name":"이름없는가게%d","category_name":"음식점 > 한식",
+			 "phone":"","address_name":"","road_address_name":"길","place_url":"",
+			 "x":"127.0276","y":"37.4979","distance":"10"}],"meta":{"is_end":true}}`, i))
+	}))
+	defer server.Close()
+
+	client := NewClientWithBaseURL("key", server.URL, server.Client())
+	places, err := client.SearchAround(context.Background(), 37.4979, 127.0276, 500)
+	if err != nil {
+		t.Fatalf("SearchAround = %v", err)
+	}
+	if len(places) != 5 {
+		t.Errorf("식별자가 빈 가게 %d곳이 남았다, want 5곳 — "+
+			"빈 식별자로 중복 판정을 하면 멀쩡한 가게들이 서로를 지운다", len(places))
+	}
+}
+
+// 중심은 필수다. 가까운 곳이 하나도 없는 결과는 이 서비스에 쓸모가 없다.
+// isCenterRequest는 이 요청이 중심 지점을 물은 것인지 본다.
+//
+// **위도만 보면 안 된다.** 동쪽·서쪽 지점은 경도만 바뀌고 위도는 그대로라,
+// 위도만 대조하면 그 둘도 중심으로 잡힌다. 조회기는 좌표를
+// strconv.FormatFloat(v, 'f', -1, 64)로 넣으므로 같은 방식으로 만들어 대조한다.
+func isCenterRequest(r *http.Request, lat, lng float64) bool {
+	return r.URL.Query().Get("x") == strconv.FormatFloat(lng, 'f', -1, 64) &&
+		r.URL.Query().Get("y") == strconv.FormatFloat(lat, 'f', -1, 64)
+}
+
+func TestSearchAroundFailsWhenCenterFails(t *testing.T) {
+	const userLat, userLng = 37.4979, 127.0276
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if isCenterRequest(r, userLat, userLng) {
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		writeJSON(t, w, `{"documents":[],"meta":{"is_end":true}}`)
+	}))
+	defer server.Close()
+
+	client := NewClientWithBaseURL("key", server.URL, server.Client())
+	if _, err := client.SearchAround(context.Background(), userLat, userLng, 500); err == nil {
+		t.Error("중심이 실패했는데 오류가 아니다")
+	}
+}
+
+// 둘레는 보강이다. 하나가 빠져도 남은 것들의 분포는 온전하다.
+func TestSearchAroundSurvivesPerimeterFailure(t *testing.T) {
+	const userLat, userLng = 37.4979, 127.0276
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if isCenterRequest(r, userLat, userLng) { // 중심만 성공
+			writeJSON(t, w, `{"documents":[
+				{"id":"center","place_name":"중심가게","category_name":"음식점 > 한식",
+				 "phone":"","address_name":"","road_address_name":"길","place_url":"",
+				 "x":"127.0276","y":"37.4979","distance":"10"}],"meta":{"is_end":true}}`)
+			return
+		}
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer server.Close()
+
+	client := NewClientWithBaseURL("key", server.URL, server.Client())
+	places, err := client.SearchAround(context.Background(), userLat, userLng, 500)
+	if err != nil {
+		t.Fatalf("둘레가 전부 실패했다고 전체가 실패하면 안 된다: %v", err)
+	}
+	if len(places) != 1 {
+		t.Errorf("중심 결과 %d곳, want 1곳", len(places))
+	}
+}
+
+// 중심을 먼저 부르고 성공한 뒤에 둘레를 부른다.
+// 다섯을 한꺼번에 쏘면, 429가 순간 호출 제한일 때 우리 요청이 스스로를 밀어낸다.
+func TestSearchAroundCallsCenterBeforePerimeter(t *testing.T) {
+	const userLat, userLng = 37.4979, 127.0276
+	var mu sync.Mutex
+	var order []string
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		if isCenterRequest(r, userLat, userLng) {
+			order = append(order, "center")
+		} else {
+			order = append(order, "perimeter")
+		}
+		mu.Unlock()
+		writeJSON(t, w, `{"documents":[],"meta":{"is_end":true}}`)
+	}))
+	defer server.Close()
+
+	client := NewClientWithBaseURL("key", server.URL, server.Client())
+	if _, err := client.SearchAround(context.Background(), userLat, userLng, 500); err != nil {
+		t.Fatalf("SearchAround = %v", err)
+	}
+
+	mu.Lock()
+	defer mu.Unlock()
+	if len(order) == 0 || order[0] != "center" {
+		t.Errorf("호출 순서 = %v, 중심이 먼저여야 한다", order)
 	}
 }
