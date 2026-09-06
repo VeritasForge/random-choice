@@ -126,10 +126,18 @@ function placeAt(id: string, distance: number): Place {
   };
 }
 
-// 20곳 중 앞의 8곳만 가깝고 나머지는 멀다.
+// 20곳 중 여덟 곳(near0~7)이 가깝고 나머지(far0~11)는 멀다.
+//
+// 먼 것을 배열 앞에 두는 이유: 정렬을 통째로 빼먹고 "배열 앞에서부터 windowSize개
+// 자르기"로 바꿔도, 애초에 배열 순서가 거리순이면 결과가 우연히 똑같아 시험이
+// 못 잡는다. 먼 가게를 앞에 두면 정렬이 빠지는 순간 far0~far7이 창 안에 들어와
+// "표본이 넓어도 처음에는 가까운 여덟 곳 안에서만 뽑는다" 시험이 바로 실패한다.
+// 같은 이유로 "원본 목록의 순서를 건드리지 않는다" 시험도, 원본이 이미 정렬돼
+// 있으면 제자리 정렬이 일어나도 눈에 띄는 변화가 없어 못 잡는다 — 이 배열은
+// 정렬 전후가 달라야 그 시험이 의미가 있다.
 const spread = [
-  ...Array.from({ length: 8 }, (_, i) => placeAt(`near${i}`, 50 + i * 10)),
   ...Array.from({ length: 12 }, (_, i) => placeAt(`far${i}`, 400 + i * 20)),
+  ...Array.from({ length: 8 }, (_, i) => placeAt(`near${i}`, 50 + i * 10)),
 ];
 
 /** 시험용 난수. 같은 씨앗이면 언제나 같은 수열을 준다. */
@@ -176,9 +184,16 @@ describe("가까운 곳 창", () => {
     expect(distances).toEqual([...distances].sort((a, b) => a - b));
   });
 
-  it("원본 목록의 순서를 건드리지 않는다", () => {
-    const original = [...spread];
-    pickPlaces(spread, 4, [], makeRng(0));
-    expect(spread).toEqual(original);
+  // "원본 목록의 순서를 건드리지 않는다"는 여기서 다시 시험하지 않는다. spread는
+  // 이 describe 안 여러 시험이 함께 쓰는 하나의 배열이라, 제자리 정렬 버그가 있어도
+  // 앞선 시험이 먼저 spread를 정렬해 버리면 이 시험이 시작될 때는 이미 정렬된
+  // 뒤라 실패하지 못한다(실제로 돌려서 확인함). 같은 계약은 위 "pickPlaces" 쪽의
+  // 동명 시험이 매번 새로 만드는 배열로 이미 안정적으로 지킨다.
+
+  // Math.max(windowSize, count) 보호가 빠지면, windowSize가 count보다 작을 때
+  // 뽑을 후보(nearest)가 요청 개수보다 짧아져 4곳을 채우지 못하고 2곳만 돌아온다.
+  it("windowSize가 count보다 작아도 요청한 개수를 채운다", () => {
+    const picked = pickPlaces(spread, 4, [], makeRng(0), 2);
+    expect(picked).toHaveLength(4);
   });
 });
