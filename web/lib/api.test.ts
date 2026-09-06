@@ -274,6 +274,7 @@ describe("응답 원소 검사 — 항목 하나씩", () => {
     "거리가 숫자가 아니다": { distance: "100" },
     "종류 식별자가 없다": { cuisineId: undefined },
     "종류 식별자가 빈 문자열이다": { cuisineId: "" },
+    "종류 식별자가 숫자다": { cuisineId: 1 },
     "식별자가 숫자다": { id: 1 },
     "전화번호가 없다": { phone: undefined },
     "위도가 없다": { lat: undefined },

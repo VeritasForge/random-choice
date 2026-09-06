@@ -12,6 +12,7 @@ import {
   type NearbyResult,
   type Place,
 } from "@/lib/api";
+import { distinctById } from "@/lib/cuisines";
 import { errorNotice } from "@/lib/errors";
 import { getCurrentPosition, GeoError } from "@/lib/geo";
 import { pickAvoiding, pickDistinct, pickOne } from "@/lib/pick";
@@ -44,22 +45,6 @@ type View =
   | { kind: "result"; cuisine: Cuisine; pool: Place[]; places: Place[] }
   | { kind: "empty"; radius: number }
   | { kind: "error"; code: string; message: string; radius: number };
-
-/**
- * 같은 id를 가진 종류가 겹치면 하나만 남긴다.
- *
- * 서버는 종류를 id별로 묶어 한 번씩만 보내 주지만, 그 성질은 JSON을 건너오면서
- * 타입에서 사라진다. 여기서 한 번 좁혀 두면 이후 추첨과 React key가 모두 유일성 위에서 돈다.
- * 보이는 이름이 아니라 id로 견주는 이유: 저장·대조의 기준이 id이고,
- * 화면 문구는 나중에 둘이 같아지도록 다듬어질 수 있다.
- *
- * 원소를 복사하지 않고 받은 객체를 그대로 돌려주는 것이 중요하다. "다시 뽑기"는
- * 직전 후보와 겹치지 않게 고르는데, 그 판정이 참조로 이뤄지기 때문이다
- * (까닭은 web/lib/places.ts에 적어 두었다).
- */
-function distinctById(cuisines: readonly Cuisine[]): Cuisine[] {
-  return [...new Map(cuisines.map((cuisine) => [cuisine.id, cuisine])).values()];
-}
 
 /**
  * 화면 단위 이름. start와 loading은 같은 화면의 두 상태이므로 하나로 본다 —
@@ -193,7 +178,7 @@ export default function Home() {
 
       {view.kind === "result" && (
         <ResultScreen
-          cuisine={view.cuisine}
+          cuisine={view.cuisine.label}
           places={view.places}
           total={view.pool.length}
           onReshuffle={reshufflePlaces}

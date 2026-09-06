@@ -1,7 +1,7 @@
-import type { Cuisine, Place } from "@/lib/api";
+import type { Place } from "@/lib/api";
 
 type Props = {
-  cuisine: Cuisine;
+  cuisine: string;
   places: Place[];
   total: number;
   onReshuffle: () => void;
@@ -47,7 +47,7 @@ export default function ResultScreen({
     <section className="flex w-full flex-col items-center gap-6">
       <div className="flex flex-col items-center gap-2">
         <p className="text-sm text-neutral-500">오늘은</p>
-        <h2 className="text-3xl font-bold tracking-tight break-keep">{cuisine.label}</h2>
+        <h2 className="text-3xl font-bold tracking-tight break-keep">{cuisine}</h2>
         {total <= FEW ? (
           <p className="text-xs text-neutral-500">
             가까운 곳 중에서는 {total}곳을 찾았어요
