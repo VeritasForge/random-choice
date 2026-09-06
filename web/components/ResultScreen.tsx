@@ -3,12 +3,26 @@ import type { Place } from "@/lib/api";
 type Props = {
   cuisine: string;
   places: Place[];
+  total: number;
+  onReshuffle: () => void;
   onRestart: () => void;
 };
+
+/**
+ * 이 수 이하로 찾은 종류는 뽑을 것이 남지 않아 "다른 가게 보기" 버튼이 아예 붙지 않고,
+ * 처음부터 다시 해서 같은 종류를 골라도 언제나 같은 목록이 나온다.
+ * 몇 곳을 찾았는지 밝히지 않으면 사용자는 그 반복을 고장으로 받아들인다 — 실제로 그런 제보가 있었다.
+ *
+ * 2026-09-06 실측에서 홍대입구역 부근 가장 가까운 45곳의 음식 종류가 열한 가지였고,
+ * 그중 여섯 가지가 이 상태였다(샐러드는 한 곳뿐이었다).
+ */
+const FEW = 2;
 
 const ROW_CLASS =
   "flex items-center justify-between gap-3 rounded-xl border border-neutral-200 p-4 dark:border-neutral-800";
 const LINK_CLASS = `${ROW_CLASS} transition hover:border-neutral-900 dark:hover:border-white`;
+const BUTTON_CLASS =
+  "rounded-full border border-neutral-300 px-6 py-3 text-sm font-medium transition hover:bg-neutral-100 dark:border-neutral-700 dark:hover:bg-neutral-800";
 
 function PlaceRow({ place }: { place: Place }) {
   return (
@@ -22,12 +36,23 @@ function PlaceRow({ place }: { place: Place }) {
   );
 }
 
-export default function ResultScreen({ cuisine, places, onRestart }: Props) {
+export default function ResultScreen({
+  cuisine,
+  places,
+  total,
+  onReshuffle,
+  onRestart,
+}: Props) {
   return (
     <section className="flex w-full flex-col items-center gap-6">
       <div className="flex flex-col items-center gap-2">
         <p className="text-sm text-neutral-500">오늘은</p>
         <h2 className="text-3xl font-bold tracking-tight break-keep">{cuisine}</h2>
+        {total <= FEW ? (
+          <p className="text-xs text-neutral-500">
+            가까운 곳 중에서는 {total}곳을 찾았어요
+          </p>
+        ) : null}
       </div>
 
       <ul className="flex w-full flex-col gap-2">
@@ -63,13 +88,30 @@ export default function ResultScreen({ cuisine, places, onRestart }: Props) {
         ))}
       </ul>
 
-      <button
-        type="button"
-        onClick={onRestart}
-        className="rounded-full border border-neutral-300 px-6 py-3 text-sm font-medium transition hover:bg-neutral-100 dark:border-neutral-700 dark:hover:bg-neutral-800"
-      >
-        처음부터 다시
-      </button>
+      {/*
+        눈에는 보이지 않고 화면 낭독기만 읽는 영역. 후보 화면과 같은 까닭이다 —
+        "다른 가게 보기"는 화면 이름을 바꾸지 않아 포커스가 움직이지 않으므로,
+        이것이 없으면 낭독기 사용자는 버튼을 누르고도 목록이 바뀌었는지 알 수 없다.
+      */}
+      <p role="status" aria-live="polite" className="sr-only">
+        {places.map((place) => place.name).join(", ")}
+      </p>
+
+      <div className="flex w-full flex-col gap-2">
+        {/*
+          보여주지 못하고 남은 가게가 있을 때만 버튼을 둔다. 걸러진 것을 이미 전부
+          보여주고 있는데 버튼을 두면, 눌러도 같은 목록이 그대로 남아
+          이 화면이 고쳐 놓은 바로 그 인상을 다시 준다.
+        */}
+        {places.length < total ? (
+          <button type="button" onClick={onReshuffle} className={BUTTON_CLASS}>
+            다른 가게 보기
+          </button>
+        ) : null}
+        <button type="button" onClick={onRestart} className={BUTTON_CLASS}>
+          처음부터 다시
+        </button>
+      </div>
     </section>
   );
 }

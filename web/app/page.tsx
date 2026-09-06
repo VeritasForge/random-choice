@@ -5,13 +5,16 @@ import CandidateScreen from "@/components/CandidateScreen";
 import Notice from "@/components/Notice";
 import ResultScreen from "@/components/ResultScreen";
 import StartScreen from "@/components/StartScreen";
-import { fetchNearby, NearbyError, type NearbyResult } from "@/lib/api";
+import { fetchNearby, NearbyError, type NearbyResult, type Place } from "@/lib/api";
 import { errorNotice } from "@/lib/errors";
 import { getCurrentPosition, GeoError } from "@/lib/geo";
 import { pickAvoiding, pickDistinct, pickOne } from "@/lib/pick";
+import { pickPlaces } from "@/lib/places";
 import { DEFAULT_RADIUS, widerThan } from "@/lib/radius";
 
 const CANDIDATE_COUNT = 4;
+// 결과 화면에 한 번에 보여줄 가게 수. 이보다 많이 남으면 나머지는 다시 뽑아서 본다.
+const PLACE_COUNT = 4;
 
 /**
  * 지금 무엇을 보여줄지를 하나의 값으로 관리한다.
@@ -22,12 +25,17 @@ const CANDIDATE_COUNT = 4;
  * empty와 error가 radius를 함께 들고 다니는 이유: 다음 행동이 그 값에 달려 있다.
  * empty는 "방금 실패한 반경보다 넓은 것"만 제안해야 하고,
  * error의 다시 시도는 사용자가 넓혀 둔 반경을 그대로 이어받아야 한다.
+ *
+ * result가 pool과 places를 나눠 들고 다니는 이유: pool은 고른 종류에 해당하는 가게 전부이고,
+ * places는 그중 지금 화면에 보이는 것이다. "다른 가게 보기"는 pool에서 다시 뽑는데,
+ * 누를 때마다 목록을 새로 걸러 만들면 같은 가게라도 다른 객체가 되어
+ * 직전 목록을 피하는 판정이 통하지 않는다(web/lib/places.ts에 까닭을 적어 두었다).
  */
 type View =
   | { kind: "start" }
   | { kind: "loading" }
   | { kind: "candidates"; result: NearbyResult; candidates: string[] }
-  | { kind: "result"; result: NearbyResult; cuisine: string }
+  | { kind: "result"; cuisine: string; pool: Place[]; places: Place[] }
   | { kind: "empty"; radius: number }
   | { kind: "error"; code: string; message: string; radius: number };
 
@@ -107,7 +115,13 @@ export default function Home() {
 
   function choose(cuisine: string) {
     if (view.kind !== "candidates") return;
-    setView({ kind: "result", result: view.result, cuisine });
+    const pool = view.result.places.filter((place) => place.cuisine === cuisine);
+    setView({
+      kind: "result",
+      cuisine,
+      pool,
+      places: pickPlaces(pool, PLACE_COUNT, [], Math.random),
+    });
   }
 
   function decideForMe() {
@@ -120,6 +134,14 @@ export default function Home() {
       return;
     }
     choose(chosen);
+  }
+
+  function reshufflePlaces() {
+    if (view.kind !== "result") return;
+    setView({
+      ...view,
+      places: pickPlaces(view.pool, PLACE_COUNT, view.places, Math.random),
+    });
   }
 
   // 이미 실패한 반경 이하는 제안하지 않는다(까닭은 lib/radius.ts에 적어 두었다).
@@ -152,7 +174,9 @@ export default function Home() {
       {view.kind === "result" && (
         <ResultScreen
           cuisine={view.cuisine}
-          places={view.result.places.filter((place) => place.cuisine === view.cuisine)}
+          places={view.places}
+          total={view.pool.length}
+          onReshuffle={reshufflePlaces}
           onRestart={() => setView({ kind: "start" })}
         />
       )}
