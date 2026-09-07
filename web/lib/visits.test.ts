@@ -119,6 +119,8 @@ describe("기록 저장과 조회", () => {
 });
 
 describe("지운 기록 되돌리기", () => {
+  // placeId만 보면 이름이나 시각을 잃는 구현도 통과한다. 지운 것이 그대로
+  // 돌아왔는지 이름·시각까지 함께 본다.
   it("지운 것을 그대로 되돌린다", () => {
     const store = fakeStore();
     recordVisit(store, "p1", "가게1", NOW);
@@ -126,9 +128,16 @@ describe("지운 기록 되돌리기", () => {
     const removed = readVisits(store, NOW).find((v) => v.placeId === "p1")!;
     forgetVisit(store, "p1", NOW);
     restoreVisits(store, [removed], NOW);
-    expect(readVisits(store, NOW).map((v) => v.placeId).sort()).toEqual(["p1", "p2"]);
+    const visits = readVisits(store, NOW);
+    expect(visits.map((v) => v.placeId).sort()).toEqual(["p1", "p2"]);
+    expect(visits.find((v) => v.placeId === "p1")).toMatchObject({
+      placeName: "가게1",
+      at: removed.at,
+    });
   });
 
+  // forgetAll은 개수만 다르지 forget과 같은 경로(load→filter→save)를 거치므로,
+  // 여기서는 개수가 맞는지만 본다 — 이름·시각 보존은 위 시험이 이미 지킨다.
   it("forgetAll 뒤에도 되돌아온다", () => {
     const store = fakeStore();
     recordVisit(store, "p1", "가게1", NOW);
@@ -147,7 +156,7 @@ describe("지운 기록 되돌리기", () => {
     const store = fakeStore();
     restoreVisits(
       store,
-      [{ placeId: "old", placeName: "옛가게", at: daysAgo(20).toISOString() }],
+      [{ placeId: "old", placeName: "옛가게", at: daysAgo(RETENTION_DAYS + 1).toISOString() }],
       NOW,
     );
     const raw = JSON.parse(store.data[STORAGE_KEY] ?? "[]") as { placeId: string }[];
@@ -155,8 +164,7 @@ describe("지운 기록 되돌리기", () => {
     expect(readVisits(store, NOW)).toHaveLength(0);
   });
 
-  // recordVisit이 같은 가게를 다시 정할 때 지키는 규칙과 같다. 걸러 내지 않으면
-  // 되돌리는 사이 다시 정한 가게가 목록에 두 번 나온다.
+  // 걸러 내지 않으면 같은 가게가 목록에 두 번 나온다(restoreVisits 위 주석 참고).
   it("같은 장소 ID가 둘이 되지 않는다", () => {
     const store = fakeStore();
     recordVisit(store, "p1", "가게1", NOW);

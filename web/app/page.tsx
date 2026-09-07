@@ -268,14 +268,20 @@ export default function Home() {
     const removed = visits.filter((visit) => visit.placeId === placeId);
     forgetVisit(store, placeId);
     setVisits(readVisits(store));
-    setUndoable(removed);
+    // 교체가 아니라 누적한다. 되돌리기 전에 줄을 두 번 지우면(드문 조작이 아니다)
+    // 교체로는 두 번째 것이 첫 번째를 지워 버려 되돌릴 수 없게 된다. 누적하면
+    // undoneCount가 매번 실제로 늘어나, 포커스 이동과 낭독기 통지가 매번 다시
+    // 일어나고(VisitsScreen.tsx) 되돌리기도 지운 것을 전부 되살린다.
+    setUndoable((prev) => [...prev, ...removed]);
   }
 
   function forgetEverything() {
+    // 전체 지우기 시점의 visits에는 이미 forget으로 지운 항목이 없으므로(그 항목은
+    // 이 함수 호출 전에 visits에서 빠졌다) 여기서도 누적해야 중복 없이 전부 모인다.
     const removed = visits;
     forgetAll(store);
     setVisits(readVisits(store));
-    setUndoable(removed);
+    setUndoable((prev) => [...prev, ...removed]);
   }
 
   /** 방금 지운 것을 되돌린다. undoable이 비어 있으면(이미 되돌렸으면) 아무 일도 하지 않는다. */

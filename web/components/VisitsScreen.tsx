@@ -33,15 +33,15 @@ export default function VisitsScreen({
   onUndo,
   onBack,
 }: Props) {
-  // 지운 직후 그 자리가 사라져(줄 전체가 없어진다) 포커스가 body로 떨어진다.
-  // 되돌리기 버튼으로 옮겨 그 자리를 대신한다. 되돌린 직후에는 안내 줄 자체가
-  // 사라지므로 제목으로 옮긴다 — ResultScreen이 "정하신 곳"에 포커스를 옮기는
-  // 것과 같은 수법이다.
   const notice = forgetNotice(undoneCount);
   const headingRef = useRef<HTMLHeadingElement>(null);
   const undoButtonRef = useRef<HTMLButtonElement>(null);
   const prevUndoneCount = useRef(undoneCount);
 
+  // 지운 직후 그 자리가 사라져(줄 전체가 없어진다) 포커스가 body로 떨어진다.
+  // 되돌리기 버튼으로 옮겨 그 자리를 대신한다. 되돌린 직후에는 안내 줄 자체가
+  // 사라지므로 제목으로 옮긴다 — ResultScreen이 "정하신 곳"에 포커스를 옮기는
+  // 것과 같은 수법이다.
   useEffect(() => {
     if (undoneCount === prevUndoneCount.current) {
       return;
@@ -90,20 +90,25 @@ export default function VisitsScreen({
         </button>
 
         {/*
+          눈에는 보이지 않고 화면 낭독기만 읽는 영역. 다른 화면 셋(StartScreen·
+          CandidateScreen·ResultScreen)과 같은 모양이다 — 영역 자체는 항상 그려
+          두고 글자만 갈아 끼운다. 영역이 내용과 함께 DOM에 새로 삽입되면
+          낭독기가 읽지 않는 것이 알려진 함정이라, 조건부로 통째로 넣고 빼면
+          이 줄이 전달하려는 "n곳을 지웠어요" 자체가 낭독기에 들리지 않는다.
+        */}
+        <p role="status" aria-live="polite" className="sr-only">
+          {notice ?? ""}
+        </p>
+
+        {/*
           방금 지운 결과를 알린다. 지운 직후 눈이 가 있는 자리라 목록 위, 회피
           스위치 아래에 둔다. ResultScreen의 회피 안내 상자와 같은 모양(테두리 있는
-          bg-surface)을 써서 화면 사이 일관성을 준다.
-
-          이 화면에는 지금까지 낭독기 통지 영역이 하나도 없었다(다른 화면 셋에는
-          있다) — 지우기가 성공했다는 사실이 낭독기 사용자에게 전혀 전달되지
-          않고 있었다. 이 줄 자체가 눈에 보이는 안내이자 그 통지 영역이다.
+          bg-surface)을 써서 화면 사이 일관성을 준다. 낭독기 통지는 위 sr-only
+          영역이 맡으므로 이 상자 자체에는 aria-live를 달지 않는다 — 달면 같은
+          내용이 두 번 들린다.
         */}
         {notice !== null ? (
-          <div
-            role="status"
-            aria-live="polite"
-            className="flex w-full flex-col items-center gap-2 rounded-xl border border-line bg-surface p-3 text-center"
-          >
+          <div className="flex w-full flex-col items-center gap-2 rounded-xl border border-line bg-surface p-3 text-center">
             <p className="text-base leading-relaxed text-muted">{notice}</p>
             <button
               ref={undoButtonRef}
