@@ -20,17 +20,54 @@ import { describe, expect, it } from "vitest";
  *
  * 즉 이 시험은 "CSS 클래스로 넣은 @keyframes 애니메이션"이라는 **한 경로**만 지킨다.
  * 완전한 방어로 착각하지 말 것.
+ *
+ * **끄는 방법은 `animation: none` 하나만 인정한다.** 널리 쓰이는
+ * `animation-duration: 0.01ms` 기법으로 꺼 두면 이 시험은 "안 껐다"고 실패한다.
+ * 안전한 쪽으로 틀리는 오경보라 논리를 넓히지 않았다. 이 저장소는 animation: none으로
+ * 통일하고, 그 기법을 쓰기로 하면 이 시험도 함께 고친다.
+ *
+ * **검사 범위는 reduce 블록 안까지다.** 예전에는 reduce가 처음 나온 자리부터 파일
+ * 끝까지를 검사 대상으로 삼아서, 블록 안에서 끄지 않고 그 아래 다른 블록(예: @media
+ * print)에서 껐어도 초록불이 떴다. 지금은 중괄호 짝을 세어 블록 안만 잘라낸다.
  */
 describe("움직임 접근성", () => {
-  const css = readFileSync(new URL("../app/globals.css", import.meta.url), "utf8");
+  // 주석을 먼저 걷어낸다. 아래 중괄호 세기와 규칙 대조가 모두 글자 대조라,
+  // 주석 안의 중괄호나 예시 코드가 그대로 섞이면 엉뚱한 자리를 블록으로 잡는다.
+  const css = readFileSync(new URL("../app/globals.css", import.meta.url), "utf8").replace(
+    /\/\*[\s\S]*?\*\//g,
+    "",
+  );
 
   /** globals.css가 선언한 @keyframes 이름 전부. */
   const keyframeNames = [...css.matchAll(/@keyframes\s+([\w-]+)/g)].map((match) => match[1]);
 
-  /** prefers-reduced-motion: reduce 블록이 시작하는 자리부터 파일 끝까지. */
+  /**
+   * prefers-reduced-motion: reduce 블록의 여는 중괄호부터 짝이 맞는 닫는 중괄호까지.
+   * 파일 끝까지 자르면 그 아래 어느 블록에서 껐어도 통과해 방어가 사라진다.
+   */
   const reduceBlock = (() => {
     const at = css.search(/@media\s*\(\s*prefers-reduced-motion:\s*reduce\s*\)/);
-    return at < 0 ? null : css.slice(at);
+    if (at < 0) {
+      return null;
+    }
+    const open = css.indexOf("{", at);
+    if (open < 0) {
+      return null;
+    }
+    let depth = 0;
+    for (let i = open; i < css.length; i += 1) {
+      if (css[i] === "{") {
+        depth += 1;
+      } else if (css[i] === "}") {
+        depth -= 1;
+        if (depth === 0) {
+          return css.slice(open, i + 1);
+        }
+      }
+    }
+    // 닫히지 않은 블록. 파일 끝까지를 블록으로 쳐 주면 안 된다 — 그것이 바로
+    // 여기서 없애려는 구멍이다.
+    return null;
   })();
 
   it("애니메이션을 선언한 곳이 있다", () => {
