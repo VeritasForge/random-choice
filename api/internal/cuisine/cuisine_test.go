@@ -192,8 +192,15 @@ func TestCountBy(t *testing.T) {
 // 순서"라는 약속이 조용히 깨진다 — 사용자에게는 같은 자리에서 새로고침할 때마다
 // 후보 카드 차례가 바뀌는 것으로 나타난다.
 //
-// 동점을 두 무리(2곳짜리 둘, 1곳짜리 셋)로 만든 이유: 곳 수를 먼저 보는 것과
-// 동점일 때 ID를 보는 것을 한 시험에서 함께 못 박는다.
+// 동점을 두 무리(2곳짜리 둘, 1곳짜리 일곱)로 만든 이유는 둘이다.
+//
+// 첫째, 곳 수를 먼저 보는 것과 동점일 때 ID를 보는 것을 한 시험에서 함께 못 박는다.
+//
+// 둘째, **1곳짜리 무리가 작으면 이 시험이 확률적으로만 잡는다.** 무리가 셋일 때는
+// 동점 규칙을 통째로 지우는 변이가 240회 중 216회(약 90%)만 실패했다 — 나머지는
+// map 순회가 우연히 ID 오름차순으로 나와 통과한 것이다. 무리를 일곱으로 늘리면
+// 그 우연이 사실상 일어나지 않아 200회 중 200회 실패한다. 방어가 있는지 없는지를
+// 운에 맡기지 않으려고 표본을 키웠다.
 func TestCountByBreaksTiesByID(t *testing.T) {
 	got := CountBy([]Cuisine{
 		{ID: "myeon", Label: "면·국수"},
@@ -203,14 +210,21 @@ func TestCountByBreaksTiesByID(t *testing.T) {
 		{ID: "myeon", Label: "면·국수"},
 		{ID: "bapjip", Label: "밥집·백반"},
 		{ID: "bunsik", Label: "분식"},
+		{ID: "dak", Label: "닭요리"},
+		{ID: "gogi", Label: "고기·구이"},
+		{ID: "hoe", Label: "회·해물"},
+		{ID: "salad", Label: "샐러드·샌드위치"},
 	})
 	ids := make([]string, 0, len(got))
 	for _, tally := range got {
 		ids = append(ids, tally.Cuisine.ID)
 	}
 	// 2곳짜리(bapjip·myeon)가 먼저, 그 안에서 ID 오름차순.
-	// 그다음 1곳짜리(asia·bunsik·jungsik)도 ID 오름차순.
-	want := []string{"bapjip", "myeon", "asia", "bunsik", "jungsik"}
+	// 그다음 1곳짜리 일곱도 ID 오름차순.
+	want := []string{
+		"bapjip", "myeon",
+		"asia", "bunsik", "dak", "gogi", "hoe", "jungsik", "salad",
+	}
 	if len(ids) != len(want) {
 		t.Fatalf("종류 차례 = %v, want %v", ids, want)
 	}
