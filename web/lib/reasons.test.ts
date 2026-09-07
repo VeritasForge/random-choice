@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { avoidNotice, canRestore, countLabel, distanceLabel } from "./reasons";
+import { avoidNotice, canRestore, countLabel, distanceLabel, forgetNotice } from "./reasons";
 
 describe("거리 문구", () => {
   it("미터와 도보 시간을 함께 보여 준다", () => {
@@ -88,5 +88,26 @@ describe("되돌리기 손잡이를 줄지", () => {
   // 즉 누를 것이 없는 "다시 넣기" 버튼이 그려지기 시작한다.
   it("released가 참이면 removed 값과 무관하게 손잡이를 주지 않는다", () => {
     expect(canRestore(3, true)).toBe(false);
+  });
+});
+
+describe("지운 뒤 안내", () => {
+  // avoidNotice와 같은 까닭이다. 지운 것이 없는데 안내를 그리면 항상 참인 문구가 된다.
+  it("지운 것이 없으면 안내를 만들지 않는다", () => {
+    expect(forgetNotice(0)).toBeNull();
+  });
+
+  it("한 곳 지우면 그 수를 말한다", () => {
+    expect(forgetNotice(1)).toBe("1곳을 지웠어요");
+  });
+
+  it("여러 곳 지우면 그 수를 말한다", () => {
+    expect(forgetNotice(3)).toBe("3곳을 지웠어요");
+  });
+
+  // avoidNotice의 removed <= 0과 같은 까닭이다. 음수가 들어올 일은 없지만
+  // 0 이하를 한 갈래로 보면 방어가 하나로 줄어든다.
+  it("음수도 안내를 만들지 않는다", () => {
+    expect(forgetNotice(-1)).toBeNull();
   });
 });

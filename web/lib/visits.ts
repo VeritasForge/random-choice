@@ -157,6 +157,34 @@ export function recordVisit(
   save(store, [...kept, { placeId, placeName, at: now.toISOString() }]);
 }
 
+/**
+ * 방금 지운 기록을 되돌린다.
+ *
+ * withoutExpired를 거치는 이유는 recordVisit·forgetVisit과 같다: 쓰기 전에 걸러야
+ * 저장소가 끝없이 커지지 않는다(위 withoutExpired 주석 참고). 되돌리는 항목도
+ * 예외가 아니다 — "지우기"를 누른 채로 보관 기간을 넘겨 오래 열어 둔 화면에서
+ * "되돌리기"를 누르면, 이미 기간이 지난 기록을 되살리는 셈이 되기 때문이다.
+ *
+ * 같은 장소 ID를 먼저 걸러 내는 이유는 recordVisit이 같은 규칙을 지키는 이유와
+ * 같다: 되돌리는 사이 같은 가게를 다시 정했을 수 있고, 그러면 방금 만든 새 기록이
+ * 되돌리는 옛 기록보다 앞서야 한다. 거르지 않으면 같은 가게가 목록에 두 번 나온다.
+ */
+export function restoreVisits(
+  store: Store | null,
+  restored: readonly Visit[],
+  now: Date = new Date(),
+): void {
+  // 되돌릴 것이 없으면 저장소를 건드리지 않는다.
+  if (restored.length === 0) {
+    return;
+  }
+  const restoredIds = new Set(restored.map((v) => v.placeId));
+  // 지금 저장된 것 중 되돌릴 ID와 겹치는 것을 빼고, 되돌릴 것을 붙인 뒤,
+  // 만료된 것을 걸러 저장한다.
+  const kept = load(store).filter((v) => !restoredIds.has(v.placeId));
+  save(store, withoutExpired([...kept, ...restored], now));
+}
+
 /** now는 readVisits·recordVisit과 같은 이유로 받는다: 시험이 실제 시계 없이 돈다. */
 export function forgetVisit(store: Store | null, placeId: string, now: Date = new Date()): void {
   save(store, withoutExpired(load(store), now).filter((v) => v.placeId !== placeId));

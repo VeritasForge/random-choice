@@ -1,3 +1,5 @@
+import { useEffect, useRef } from "react";
+import { forgetNotice } from "@/lib/reasons";
 import { RETENTION_DAYS, type Visit } from "@/lib/visits";
 
 type Props = {
@@ -6,6 +8,9 @@ type Props = {
   onToggleAvoid: () => void;
   onForget: (placeId: string) => void;
   onForgetAll: () => void;
+  /** 방금 지운 곳 수. 0이면 안내 줄을 그리지 않는다. 문구는 web/lib/reasons.ts가 만든다. */
+  undoneCount: number;
+  onUndo: () => void;
   onBack: () => void;
 };
 
@@ -24,13 +29,39 @@ export default function VisitsScreen({
   onToggleAvoid,
   onForget,
   onForgetAll,
+  undoneCount,
+  onUndo,
   onBack,
 }: Props) {
+  // 지운 직후 그 자리가 사라져(줄 전체가 없어진다) 포커스가 body로 떨어진다.
+  // 되돌리기 버튼으로 옮겨 그 자리를 대신한다. 되돌린 직후에는 안내 줄 자체가
+  // 사라지므로 제목으로 옮긴다 — ResultScreen이 "정하신 곳"에 포커스를 옮기는
+  // 것과 같은 수법이다.
+  const notice = forgetNotice(undoneCount);
+  const headingRef = useRef<HTMLHeadingElement>(null);
+  const undoButtonRef = useRef<HTMLButtonElement>(null);
+  const prevUndoneCount = useRef(undoneCount);
+
+  useEffect(() => {
+    if (undoneCount === prevUndoneCount.current) {
+      return;
+    }
+    prevUndoneCount.current = undoneCount;
+    if (undoneCount > 0) {
+      undoButtonRef.current?.focus();
+    } else {
+      headingRef.current?.focus();
+    }
+  }, [undoneCount]);
+
   return (
     // grow·my-auto로 버튼 묶음을 화면 아래쪽에 붙인다(까닭은 StartScreen에 적어 두었다).
     <section className="rise flex w-full grow flex-col">
       <div className="my-auto flex w-full flex-col items-center gap-5 py-6">
-        <h2 className="text-2xl font-bold tracking-tight text-balance">최근에 정하신 곳</h2>
+        {/* tabIndex={-1}은 되돌린 직후 포커스를 여기로 옮기기 위한 것이다(위 useEffect 참고). */}
+        <h2 ref={headingRef} tabIndex={-1} className="text-2xl font-bold tracking-tight text-balance">
+          최근에 정하신 곳
+        </h2>
 
         {/*
           체크박스가 아니라 aria-pressed를 단 버튼을 쓰는 이유: 화면 낭독기가
@@ -57,6 +88,33 @@ export default function VisitsScreen({
           </span>
           <span className="shrink-0 text-base font-semibold">{avoidOn ? "켜짐" : "꺼짐"}</span>
         </button>
+
+        {/*
+          방금 지운 결과를 알린다. 지운 직후 눈이 가 있는 자리라 목록 위, 회피
+          스위치 아래에 둔다. ResultScreen의 회피 안내 상자와 같은 모양(테두리 있는
+          bg-surface)을 써서 화면 사이 일관성을 준다.
+
+          이 화면에는 지금까지 낭독기 통지 영역이 하나도 없었다(다른 화면 셋에는
+          있다) — 지우기가 성공했다는 사실이 낭독기 사용자에게 전혀 전달되지
+          않고 있었다. 이 줄 자체가 눈에 보이는 안내이자 그 통지 영역이다.
+        */}
+        {notice !== null ? (
+          <div
+            role="status"
+            aria-live="polite"
+            className="flex w-full flex-col items-center gap-2 rounded-xl border border-line bg-surface p-3 text-center"
+          >
+            <p className="text-base leading-relaxed text-muted">{notice}</p>
+            <button
+              ref={undoButtonRef}
+              type="button"
+              onClick={onUndo}
+              className="btn btn-quiet btn-sm"
+            >
+              되돌리기
+            </button>
+          </div>
+        ) : null}
 
         {visits.length === 0 ? (
           <div className="flex flex-col items-center gap-2 text-center">

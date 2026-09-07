@@ -75,3 +75,14 @@ export function canRestore(removed: number, released: boolean): boolean {
   }
   return removed > 0;
 }
+
+/**
+ * 기록 화면에서 방금 지운 뒤 보여줄 안내. avoidNotice와 같은 모양이다 — 지운 것이
+ * 없으면 null을 돌려주고 화면은 줄 자체를 그리지 않는다.
+ */
+export function forgetNotice(count: number): string | null {
+  if (count <= 0) {
+    return null;
+  }
+  return `${count}곳을 지웠어요`;
+}

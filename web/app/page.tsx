@@ -28,6 +28,7 @@ import {
   readAvoidOn,
   readVisits,
   recordVisit,
+  restoreVisits,
   writeAvoidOn,
   type Store,
   type Visit,
@@ -103,6 +104,11 @@ export default function Home() {
   // web/lib/visits.ts의 readAvoidOn에 적어 두었다.
   const [avoidOn, setAvoidOn] = useState(true);
   const [visits, setVisits] = useState<Visit[]>([]);
+  // 방금 지운 것을 잠깐 들고 있다가 "되돌리기"로 되살릴 수 있게 한다. 저장소에는
+  // 휴지통을 만들지 않는다 — 화면을 벗어나면(onBack) 이 목록도 함께 비운다.
+  // View 밖에 두는 이유는 visits·avoidOn과 같다: View는 화면을 옮길 때마다
+  // 통째로 갈아 끼우는 값이다.
+  const [undoable, setUndoable] = useState<Visit[]>([]);
 
   const mainRef = useRef<HTMLElement>(null);
   const screenName = screenNameOf(view);
@@ -258,13 +264,26 @@ export default function Home() {
   }
 
   function forget(placeId: string) {
+    // 지우기 전에 골라 둔다 — 지운 뒤에는 store에서 이 항목을 다시 찾을 수 없다.
+    const removed = visits.filter((visit) => visit.placeId === placeId);
     forgetVisit(store, placeId);
     setVisits(readVisits(store));
+    setUndoable(removed);
   }
 
   function forgetEverything() {
+    const removed = visits;
     forgetAll(store);
     setVisits(readVisits(store));
+    setUndoable(removed);
+  }
+
+  /** 방금 지운 것을 되돌린다. undoable이 비어 있으면(이미 되돌렸으면) 아무 일도 하지 않는다. */
+  function undoForget() {
+    if (undoable.length === 0) return;
+    restoreVisits(store, undoable);
+    setVisits(readVisits(store));
+    setUndoable([]);
   }
 
   // 이미 실패한 반경 이하는 제안하지 않는다(까닭은 lib/radius.ts에 적어 두었다).
@@ -328,7 +347,15 @@ export default function Home() {
           onToggleAvoid={toggleAvoid}
           onForget={forget}
           onForgetAll={forgetEverything}
-          onBack={() => setView({ kind: "start" })}
+          undoneCount={undoable.length}
+          onUndo={undoForget}
+          // 화면을 벗어나면 되돌리기도 사라진다는 것이 이 설계의 전제다. 여기를
+          // 빠뜨리면 다음에 기록 화면에 들어왔을 때 오래된 안내가 떠 있고,
+          // 누르면 사용자가 잊은 항목이 되살아난다.
+          onBack={() => {
+            setUndoable([]);
+            setView({ kind: "start" });
+          }}
         />
       )}
 

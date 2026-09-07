@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   AVOID_KEY, browserStore, forgetAll, forgetVisit, readAvoidOn, readVisits, recordVisit,
-  RETENTION_DAYS, STORAGE_KEY, writeAvoidOn, type Store,
+  restoreVisits, RETENTION_DAYS, STORAGE_KEY, writeAvoidOn, type Store,
 } from "./visits";
 
 /** 시험용 저장소. 실제 localStorage 대신 넘긴다. */
@@ -118,6 +118,54 @@ describe("기록 저장과 조회", () => {
   });
 });
 
+describe("지운 기록 되돌리기", () => {
+  it("지운 것을 그대로 되돌린다", () => {
+    const store = fakeStore();
+    recordVisit(store, "p1", "가게1", NOW);
+    recordVisit(store, "p2", "가게2", NOW);
+    const removed = readVisits(store, NOW).find((v) => v.placeId === "p1")!;
+    forgetVisit(store, "p1", NOW);
+    restoreVisits(store, [removed], NOW);
+    expect(readVisits(store, NOW).map((v) => v.placeId).sort()).toEqual(["p1", "p2"]);
+  });
+
+  it("forgetAll 뒤에도 되돌아온다", () => {
+    const store = fakeStore();
+    recordVisit(store, "p1", "가게1", NOW);
+    recordVisit(store, "p2", "가게2", NOW);
+    recordVisit(store, "p3", "가게3", NOW);
+    const removed = readVisits(store, NOW);
+    forgetAll(store);
+    restoreVisits(store, removed, NOW);
+    expect(readVisits(store, NOW)).toHaveLength(3);
+  });
+
+  // readVisits는 자신도 만료된 항목을 거르므로, restoreVisits로 확인하면 이 방어가
+  // 있든 없든 통과한다. 그래서 저장소에 실제로 쓰인 원본을 직접 본다
+  // ("정할 때 보관 기간 지난 기록은 저장소에서도 함께 지운다" 시험과 같은 까닭).
+  it("보관 기간이 지난 항목은 되돌리지 않는다", () => {
+    const store = fakeStore();
+    restoreVisits(
+      store,
+      [{ placeId: "old", placeName: "옛가게", at: daysAgo(20).toISOString() }],
+      NOW,
+    );
+    const raw = JSON.parse(store.data[STORAGE_KEY] ?? "[]") as { placeId: string }[];
+    expect(raw).toHaveLength(0);
+    expect(readVisits(store, NOW)).toHaveLength(0);
+  });
+
+  // recordVisit이 같은 가게를 다시 정할 때 지키는 규칙과 같다. 걸러 내지 않으면
+  // 되돌리는 사이 다시 정한 가게가 목록에 두 번 나온다.
+  it("같은 장소 ID가 둘이 되지 않는다", () => {
+    const store = fakeStore();
+    recordVisit(store, "p1", "가게1", NOW);
+    const visit = readVisits(store, NOW)[0];
+    restoreVisits(store, [visit], NOW);
+    expect(readVisits(store, NOW).map((v) => v.placeId)).toEqual(["p1"]);
+  });
+});
+
 describe("저장소가 말을 듣지 않을 때", () => {
   // 시크릿 창이나 저장소 차단 설정에서는 접근 자체가 예외를 던진다.
   // 그래도 서비스는 "기억 없는 상태"로 정상 동작해야 한다.
@@ -133,6 +181,9 @@ describe("저장소가 말을 듣지 않을 때", () => {
     expect(readVisits(null, NOW)).toEqual([]);
     expect(() => recordVisit(null, "p1", "가게", NOW)).not.toThrow();
     expect(() => forgetAll(null)).not.toThrow();
+    expect(() =>
+      restoreVisits(null, [{ placeId: "p1", placeName: "가게", at: NOW.toISOString() }], NOW),
+    ).not.toThrow();
   });
 });
 
