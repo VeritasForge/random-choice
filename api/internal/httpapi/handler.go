@@ -244,8 +244,15 @@ func buildResponse(found []kakao.Place) nearbyResponse {
 	case len(places) == 0:
 		// 전부 버려지면 응답은 빈 목록이 되고, 화면은 그것을 "주변에 음식점이
 		// 없어요"로 보여 준다. 정말로 없는 것과 구분이 서버 쪽에라도 남아야 한다.
-		slog.Error("음식 종류를 하나도 뽑지 못했습니다",
-			"notLunch", notLunch, "noRule", noRule, "total", len(found))
+		//
+		// noRule이 0이면 그 항목을 아예 빼고 찍는다. 이 줄은 Error 등급이라,
+		// "규칙이 없어 버린 가게 0곳"이 함께 실리면 아무 문제도 아닌 수치가
+		// 오류의 일부처럼 읽힌다 — 실제 원인은 notLunch 쪽이다.
+		attrs := []any{"notLunch", notLunch, "total", len(found)}
+		if noRule > 0 {
+			attrs = append(attrs, "noRule", noRule)
+		}
+		slog.Error("음식 종류를 하나도 뽑지 못했습니다", attrs...)
 	case noRule > 0:
 		// 이쪽이 진짜 신호다. 카카오가 분류 문자열 형식을 바꿨거나
 		// 우리 어휘가 못 덮는 분류가 늘었다는 뜻이다.

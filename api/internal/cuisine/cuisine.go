@@ -110,14 +110,9 @@ func segments(categoryName string) []string {
 	return segs
 }
 
-// Classify는 카카오 분류 문자열을 우리 어휘로 옮긴다.
-// 점심 대상이 아니거나 맞는 규칙이 없으면 ok가 false다.
-func Classify(categoryName string) (Cuisine, bool) {
-	c, ok, _ := ClassifyWithReason(categoryName)
-	return c, ok
-}
-
-// ClassifyWithReason은 뺄 때 그 이유까지 돌려준다. 부르는 쪽이 이유별로 따로 세도록.
+// ClassifyWithReason은 카카오 분류 문자열을 우리 어휘로 옮긴다.
+// 점심 대상이 아니거나 맞는 규칙이 없으면 ok가 false이고, 그때 왜 뺐는지를
+// DropReason으로 함께 돌려준다 — 부르는 쪽이 이유별로 따로 세도록.
 func ClassifyWithReason(categoryName string) (Cuisine, bool, DropReason) {
 	segs := segments(categoryName)
 	for _, r := range rules {

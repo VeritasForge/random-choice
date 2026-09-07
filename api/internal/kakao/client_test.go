@@ -450,29 +450,56 @@ func TestSearchRestaurantsKeepsPlacesWithoutIdentifier(t *testing.T) {
 	}
 }
 
+// 조회 전체 상한이 실제로 도는지 확인한다. 상한이 사라지거나 늘어나면
+// 카카오가 느린 날 브라우저는 로딩 화면에 갇히고 서버는 연결을 붙잡고 있는다.
+//
+// **이 시험 자신이 멈추지 않는 것이 중요하다.** 지키려는 상한을 지우면 조회는
+// 답하지 않는 가짜 서버를 영영 기다린다. 그대로 두면 `just check`가 빨간불이
+// 아니라 10분 멈춤(Go 하니스의 패닉)이 되고, 다음 사람은 무엇이 잘못됐는지
+// 모른 채 기다린다. 그래서 조회를 별도 고루틴에서 돌리고 select로 기다린다.
 func TestSearchRestaurantsStopsAtItsOwnTimeLimit(t *testing.T) {
-	// 조회 전체 상한이 실제로 도는지 확인한다. 상한이 사라지거나 늘어나면
-	// 카카오가 느린 날 브라우저는 로딩 화면에 갇히고 서버는 연결을 붙잡고 있는다.
+	// 이 시험이 짧게 끝나기 위해 필요한 것 둘 가운데 하나.
+	// stop은 가짜 서버의 비상구다 — 상한이 사라진 판에서는 조회 고루틴이 연결을
+	// 붙잡은 채로 남는데, 그러면 server.Close()가 그 요청이 끝나기를 기다리며
+	// 이 시험을 다시 멈춰 세운다.
+	stop := make(chan struct{})
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		<-r.Context().Done() // 상한이 끊어 줄 때까지 응답하지 않는다
+		select {
+		case <-r.Context().Done(): // 상한이 끊어 줄 때까지 응답하지 않는다
+		case <-stop:
+		}
 	}))
 	defer server.Close()
+	// defer는 역순으로 도므로, 뒤에 적은 이 줄이 server.Close()보다 먼저 돈다.
+	defer close(stop)
 
 	client := NewClientWithBaseURL("test-key", server.URL, server.Client())
 	client.searchTimeout = 50 * time.Millisecond
 
+	type outcome struct {
+		err     error
+		elapsed time.Duration
+	}
+	done := make(chan outcome, 1)
 	start := time.Now()
-	_, err := client.SearchRestaurants(context.Background(), 37.49, 127.02, 500)
-	elapsed := time.Since(start)
+	go func() {
+		_, err := client.SearchRestaurants(context.Background(), 37.49, 127.02, 500)
+		done <- outcome{err, time.Since(start)}
+	}()
 
-	if !errors.Is(err, ErrUpstream) {
-		t.Errorf("상위 서비스 오류여야 한다. 받은 오류: %v", err)
-	}
-	if !errors.Is(err, context.DeadlineExceeded) {
-		t.Errorf("시간 초과임을 errors.Is로 알아볼 수 있어야 한다. 받은 오류: %v", err)
-	}
-	if elapsed > 3*time.Second {
-		t.Errorf("%v가 걸렸다. 상한(50ms)에서 끊겼어야 한다", elapsed)
+	select {
+	case got := <-done:
+		if !errors.Is(got.err, ErrUpstream) {
+			t.Errorf("상위 서비스 오류여야 한다. 받은 오류: %v", got.err)
+		}
+		if !errors.Is(got.err, context.DeadlineExceeded) {
+			t.Errorf("시간 초과임을 errors.Is로 알아볼 수 있어야 한다. 받은 오류: %v", got.err)
+		}
+		if got.elapsed > 3*time.Second {
+			t.Errorf("%v가 걸렸다. 상한(50ms)에서 끊겼어야 한다", got.elapsed)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("3초 안에 끝나지 않았다. 조회 상한(50ms)이 돌지 않는다")
 	}
 }
 
@@ -837,11 +864,21 @@ func TestSearchAroundRecomputesDistanceFromUserPosition(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		x := r.URL.Query().Get("x")
 		y := r.URL.Query().Get("y")
-		// 어느 지점을 물어도 그 지점 바로 위의 가게를 주고, 거리는 5m라고 답한다.
+		// 어느 지점을 물어도 그 지점 바로 위의 가게를 준다.
+		id, distance := x+y, "5"
+		if isCenterRequest(r, userLat, userLng) {
+			// 중심 응답의 거리만 일부러 터무니없는 값으로 둔다.
+			//
+			// 왜 필요한가: 아래 "가장 먼 가게" 단언은 둘레 지점의 값만 보므로,
+			// **중심 결과만** 카카오가 준 거리를 그대로 쓰도록 바꿔도 통과한다.
+			// 운영에서는 중심의 카카오 거리가 이미 사용자 기준이라 해가 없지만,
+			// 그러면 이 시험의 이름이 약속하는 범위보다 실제 범위가 좁다.
+			id, distance = "center", "999"
+		}
 		writeJSON(t, w, fmt.Sprintf(`{"documents":[
 			{"id":%q,"place_name":"가게","category_name":"음식점 > 한식",
 			 "phone":"","address_name":"","road_address_name":"길","place_url":"",
-			 "x":%q,"y":%q,"distance":"5"}],"meta":{"is_end":true}}`, x+y, x, y))
+			 "x":%q,"y":%q,"distance":%q}],"meta":{"is_end":true}}`, id, x, y, distance))
 	}))
 	defer server.Close()
 
@@ -849,6 +886,9 @@ func TestSearchAroundRecomputesDistanceFromUserPosition(t *testing.T) {
 	places, err := client.SearchAround(context.Background(), userLat, userLng, 500)
 	if err != nil {
 		t.Fatalf("SearchAround = %v", err)
+	}
+	if len(places) != 5 {
+		t.Fatalf("받은 가게 %d곳, want 5곳 (지점마다 하나씩)", len(places))
 	}
 
 	var far int
@@ -862,6 +902,73 @@ func TestSearchAroundRecomputesDistanceFromUserPosition(t *testing.T) {
 	if far < 350 {
 		t.Errorf("가장 먼 가게가 %dm다. 카카오가 준 거리를 그대로 쓰고 있다 — "+
 			"둘레 지점은 사용자로부터 400m 떨어져 있으므로 400m 안팎이 나와야 한다", far)
+	}
+
+	// 중심 지점의 가게도 함께 본다. 그 가게는 사용자 위치 바로 그 자리에 있으므로
+	// 다시 계산하면 0m 안팎이 나온다. 카카오가 준 999m를 그대로 쓰면 여기서 걸린다.
+	var center *Place
+	for i := range places {
+		if places[i].ID == "center" {
+			center = &places[i]
+		}
+	}
+	if center == nil {
+		t.Fatalf("중심 지점의 가게가 결과에 없다: %+v", places)
+	}
+	if center.Distance > 10 {
+		t.Errorf("중심 가게의 거리가 %dm다. 카카오가 준 999m를 그대로 쓰고 있다 — "+
+			"중심 결과도 사용자 위치 기준으로 다시 계산해야 한다", center.Distance)
+	}
+}
+
+// SearchAround는 합친 결과를 거리 오름차순으로 돌려준다고 문서 주석에서 약속한다.
+// 그 약속을 지우면(sort.Slice 한 줄) 다섯 지점을 병합한 순서가 그대로 나간다.
+//
+// 가짜 응답을 **일부러 먼 것부터** 담는 것이 이 시험의 핵심이다. 이미 거리순인
+// 자료를 넣으면 정렬을 지워도 결과가 우연히 같아 아무것도 지키지 못한다
+// (web/lib/places.test.ts가 같은 함정을 주석으로 적어 두었다).
+func TestSearchAroundSortsByDistance(t *testing.T) {
+	const userLat, userLng = 37.4979, 127.0276
+	// 위도 1도는 약 111320m다. 중심에서 북쪽으로 이만큼 떨어진 지점을 만든다.
+	north := func(meters float64) string {
+		return strconv.FormatFloat(userLat+meters/111320.0, 'f', -1, 64)
+	}
+	sameLng := strconv.FormatFloat(userLng, 'f', -1, 64)
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !isCenterRequest(r, userLat, userLng) {
+			writeJSON(t, w, `{"documents":[],"meta":{"is_end":true}}`)
+			return
+		}
+		docs := make([]string, 0, 3)
+		for _, m := range []float64{300, 200, 100} { // 먼 것부터
+			docs = append(docs, fmt.Sprintf(`{"id":"m%d","place_name":"가게%d",
+				"category_name":"음식점 > 한식","phone":"","address_name":"",
+				"road_address_name":"길","place_url":"","x":%q,"y":%q,"distance":"0"}`,
+				int(m), int(m), sameLng, north(m)))
+		}
+		writeJSON(t, w, fmt.Sprintf(`{"documents":[%s],"meta":{"is_end":true}}`,
+			strings.Join(docs, ",")))
+	}))
+	defer server.Close()
+
+	client := NewClientWithBaseURL("key", server.URL, server.Client())
+	places, err := client.SearchAround(context.Background(), userLat, userLng, 500)
+	if err != nil {
+		t.Fatalf("SearchAround = %v", err)
+	}
+	got := make([]string, 0, len(places))
+	for _, p := range places {
+		got = append(got, p.ID)
+	}
+	want := []string{"m100", "m200", "m300"}
+	if len(got) != len(want) {
+		t.Fatalf("받은 가게 = %v, want %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("거리 오름차순이 아니다. 받은 차례 = %v, want %v", got, want)
+		}
 	}
 }
 
@@ -1047,8 +1154,13 @@ func TestSearchAroundKeepsOneTimeBudgetForAllPoints(t *testing.T) {
 
 	// 예산 하나를 나눠 쓰면 전체가 예산 안(중심 0.5 + 둘레가 남은 0.5)에서 끝난다.
 	// 각자 새로 열면 중심 0.5 + 둘레 1.0 = 예산의 1.5배가 된다.
-	if limit := budget * 3 / 2; elapsed > limit {
-		t.Errorf("SearchAround가 %v 걸렸다(상한 %v = 예산 %v의 1.5배). "+
+	//
+	// 문턱을 그 둘 사이인 **1.25배(500ms)**에 둔다. 1.5배(600ms)로 두었을 때
+	// 실제로 바깥 예산을 지우는 변이를 넣어 재 보니 603~605ms가 걸려, 잡히기는
+	// 하지만 여유가 0.8%뿐이었다 — 통과·실패를 논리가 아니라 스케줄링 잡음이
+	// 가르는 상태다. 1.25배면 정상 400ms·결함 605ms 양쪽에서 100ms씩 떨어진다.
+	if limit := budget * 5 / 4; elapsed > limit {
+		t.Errorf("SearchAround가 %v 걸렸다(상한 %v = 예산 %v의 1.25배). "+
 			"중심과 둘레가 예산을 각자 새로 열고 있다 — 맨 위에서 전체 예산을 "+
 			"한 번만 잡아 안쪽이 그 마감을 물려받게 해야 한다", elapsed, limit, budget)
 	}

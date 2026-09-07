@@ -9,6 +9,7 @@ import (
 	"math"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"testing"
 
@@ -86,6 +87,22 @@ func TestNearbyReturnsCuisinesAndPlaces(t *testing.T) {
 	}
 	if body.Places[0].CuisineID != "bunsik" {
 		t.Errorf("첫 가게의 음식 종류가 %q다. \"bunsik\"이어야 한다", body.Places[0].CuisineID)
+	}
+}
+
+// 좌표를 받은 그대로 조회기에 넘기는지 본다.
+//
+// 위도와 경도를 **서로 다른 값**으로 넣는 것이 이 시험의 전부다. 같은 값을 쓰면
+// 두 인자를 뒤바꿔도 통과한다. 뒤바뀌면 서비스가 통째로 엉뚱한 동네를 조회하는데
+// 오류는 하나도 나지 않는다 — 응답 형태도 상태 코드도 정상이라 아무도 알아채지 못한다.
+func TestNearbyPassesCoordinatesToFinder(t *testing.T) {
+	finder := &fakeFinder{}
+	get(t, NewHandler(finder), "/api/v1/nearby?lat=37.5&lng=127.0")
+	if finder.gotLat != 37.5 {
+		t.Errorf("위도 %v를 넘겼다. 37.5여야 한다", finder.gotLat)
+	}
+	if finder.gotLng != 127.0 {
+		t.Errorf("경도 %v를 넘겼다. 127.0이어야 한다", finder.gotLng)
 	}
 }
 
@@ -180,11 +197,25 @@ func TestNearbyExcludesNonLunchPlaces(t *testing.T) {
 	}}
 	rec := get(t, NewHandler(finder), "/api/v1/nearby?lat=37.4&lng=127.0&radius=500")
 
-	if strings.Contains(rec.Body.String(), "위스키바") {
-		t.Error("술집이 결과에 들어 있다. 점심에 위스키바를 권하면 안 된다")
+	// 본문 전체를 훑으면 가게 이름이 아니라 주소·URL 어느 항목에 들어 있어도 통과한다.
+	// 응답을 파싱해 places 배열의 이름만 본다.
+	var body struct {
+		Places []struct {
+			Name string `json:"name"`
+		} `json:"places"`
 	}
-	if !strings.Contains(rec.Body.String(), "밥집") {
-		t.Error("점심 대상인 가게까지 빠졌다")
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("응답을 해석하지 못했다: %v (본문: %s)", err, rec.Body.String())
+	}
+	names := make([]string, 0, len(body.Places))
+	for _, p := range body.Places {
+		names = append(names, p.Name)
+	}
+	if slices.Contains(names, "위스키바") {
+		t.Errorf("술집이 결과에 들어 있다. 점심에 위스키바를 권하면 안 된다. 받은 가게: %v", names)
+	}
+	if !slices.Contains(names, "밥집") {
+		t.Errorf("점심 대상인 가게까지 빠졌다. 받은 가게: %v", names)
 	}
 }
 

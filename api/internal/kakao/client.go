@@ -145,6 +145,11 @@ const perimeterOffsetM = 400.0
 // 돌려주는 모든 Place.Distance는 카카오가 준 값이 아니라 사용자가 준
 // lat,lng 기준으로 다시 계산한 값이다. 카카오의 거리는 조회 중심 기준이라
 // 그대로 쓰면 412m가 24m로 표시된다.
+//
+// 돌려주는 목록은 그 거리의 **오름차순**이다. 다섯 지점을 합친 결과를 병합 순서
+// 그대로 주면 조회기로서 이상한 계약이라, 여기서 약속하고 여기서 지킨다.
+// 부르는 쪽인 httpapi도 자기 응답을 따로 정렬한다 — 조회기를 갈아 끼우면 이쪽
+// 약속만 조용히 사라지므로, 두 자리 모두 자기 약속을 자기가 지킨다.
 func (c *Client) SearchAround(ctx context.Context, lat, lng float64, radius int) ([]Place, error) {
 	// 다섯 지점 전체의 시간 상한. 안쪽 SearchRestaurants도 각자 상한을 열지만,
 	// 이미 마감이 잡힌 부모에서 파생되므로 더 이른 이쪽 마감을 물려받는다.
@@ -230,7 +235,9 @@ func (c *Client) SearchRestaurants(ctx context.Context, lat, lng float64, radius
 	// 카카오가 페이지 경계에서 같은 가게를 두 번 주는 경우를 대비한다.
 	// 그대로 두면 결과 목록에 같은 가게가 두 번 나오고(화면의 React key도 겹친다),
 	// 종류별 가게 수가 실제보다 부풀어 보인다.
-	// (추첨 자체는 종류 "이름" 집합에서 균등하게 뽑으므로 가게 수와 무관하다 — web/lib/pick.ts 참조)
+	// (추첨 자체는 종류 **식별자** 집합에서 균등하게 뽑으므로 가게 수와 무관하다 —
+	//  web/lib/cuisines.ts의 distinctById가 id 하나에 하나만 남긴 목록을 만들고,
+	//  web/lib/pick.ts가 그 목록에서 항목마다 같은 확률로 뽑는다)
 	seen := make(map[string]struct{}, pageSize*maxPages)
 
 	for page := 1; page <= maxPages; page++ {
@@ -248,7 +255,7 @@ func (c *Client) SearchRestaurants(ctx context.Context, lat, lng float64, radius
 				// 어느 항목이 깨졌는지만 남긴다. 좌표는 물론이고 가게 식별자도 남기지 않는다 —
 				// 그 가게는 사용자 반경(기본 500m) 안에 있어, 어느 쪽이든 위치를 좁히는 단서가 된다.
 				// 형식이 바뀐 것을 알아채는 데는 항목 이름으로 충분하다.
-				// 몇 건이 빠졌는지는 이 줄이 찍힌 횟수로 센다 — httpapi 쪽 dropped는
+				// 몇 건이 빠졌는지는 이 줄이 찍힌 횟수로 센다 — httpapi 쪽 notLunch·noRule은
 				// 음식 종류를 못 뽑은 가게만 세는 다른 수치이므로 여기 건수를 대신하지 않는다.
 				slog.Warn("카카오 응답 한 건을 해석하지 못해 건너뜁니다", "field", badField)
 				continue

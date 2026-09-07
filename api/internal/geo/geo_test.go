@@ -17,8 +17,10 @@ func assertClose(t *testing.T, label string, got, want, tol float64) {
 		t.Errorf("%s = NaN. 계산이 깨졌다", label)
 		return
 	}
+	// %v로 찍는다. %.1f로 자르면 소수점 아래 둘째 자리에서 어긋난 값이
+	// "같은 값인데 실패했다"처럼 보여, 읽는 사람이 시험을 의심하게 된다.
 	if math.Abs(got-want) > tol {
-		t.Errorf("%s = %.1f, want %.1f ± %.1f", label, got, want, tol)
+		t.Errorf("%s = %v, want %v ± %v", label, got, want, tol)
 	}
 }
 
