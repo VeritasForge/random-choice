@@ -14,7 +14,7 @@
  * 보이도록 만들어졌을 수 있다. **넉넉히 잡는 쪽을 골랐다** — "5분"이라고 하고
  * 4분이 걸리는 편이 그 반대보다 낫다.
  */
-export const WALK_METERS_PER_MINUTE = 67;
+const WALK_METERS_PER_MINUTE = 67;
 
 /** "240m · 도보 4분" 같은 문구. 도보 시간은 올림하고 최소 1분이다. */
 export function distanceLabel(meters: number): string {

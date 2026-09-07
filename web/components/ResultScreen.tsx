@@ -220,6 +220,12 @@ export default function ResultScreen({
           "햇빛 아래에서 안 보인다"였는데, 같은 잣대를 대면 테두리 없는 이 상자야말로
           밖에서 경계가 사라진다. 그래서 border-line을 준다 —
           밝은 화면 3.44:1, 어두운 화면 3.48:1이라 WCAG 1.4.11의 3:1을 넘는다.
+
+          **그 두 수는 테두리의 바깥 면(화면 바탕과 맞닿는 쪽)이다.** 이 테두리는
+          안쪽으로 --surface와도 맞닿는데, 그쪽은 밝은 화면 3.0986:1 · 어두운 화면
+          3.1022:1로 여유가 0.10뿐이다. 지금은 3:1을 넘으므로 통과이고 색을 바꿀
+          값어치는 없지만, --surface나 --line을 조금이라도 조정하면 여기가 가장
+          먼저 깨진다(같은 사실을 app/globals.css의 --line 옆에도 적어 두었다).
         */}
         {banner !== null ? (
           <div className="flex w-full flex-col items-center gap-2 rounded-xl border border-line bg-surface p-3 text-center">

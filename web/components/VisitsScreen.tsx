@@ -95,9 +95,15 @@ export default function VisitsScreen({
           두고 글자만 갈아 끼운다. 영역이 내용과 함께 DOM에 새로 삽입되면
           낭독기가 읽지 않는 것이 알려진 함정이라, 조건부로 통째로 넣고 빼면
           이 줄이 전달하려는 "n곳을 지웠어요" 자체가 낭독기에 들리지 않는다.
+
+          **아래 보이는 상자와 다른 말을 담는다.** 같은 문자열을 두 자리에 그대로
+          두면, 낭독기 사용자가 읽기 커서로 화면을 훑을 때 같은 문장을 두 번
+          마주친다(다른 세 화면도 낭독기 영역과 보이는 문구의 내용이 서로 다르다).
+          몇 곳을 지웠는지는 반드시 들려야 하므로 그 수는 그대로 두고, 눈으로는
+          버튼이 보여서 알 수 있는 사실 — 되돌릴 수 있다는 것 — 을 말로 덧붙인다.
         */}
         <p role="status" aria-live="polite" className="sr-only">
-          {notice ?? ""}
+          {notice !== null ? `${notice}. 아래 되돌리기 버튼으로 되살릴 수 있어요.` : ""}
         </p>
 
         {/*
@@ -172,9 +178,13 @@ export default function VisitsScreen({
       <div className="flex w-full flex-col gap-3">
         {/*
           "전체 지우기"만 다른 옷을 입힌다(btn-danger-quiet). 바로 아래 "돌아가기"와
-          12px 간격으로 붙어 있는데, 하나는 최대 2주치 기록을 한 번에 없애고 복구가 없고
+          12px 간격으로 붙어 있는데, 하나는 최대 2주치 기록을 한 번에 없애고
           다른 하나는 그냥 이전 화면으로 간다. 걸으면서 한 손으로 누르는 화면이라
           같은 옷을 입혀 두면 안 된다. 색과 명암비는 app/globals.css에 적어 두었다.
+
+          되돌리기가 붙었지만 이 자리가 여전히 조심스러운 이유: 되돌리기는 **이 화면을
+          벗어나면 사라진다**("돌아가기"가 되돌릴 목록을 비운다 — app/page.tsx).
+          즉 지우고 나가 버리면 그때는 정말로 복구가 없다.
         */}
         {visits.length > 0 ? (
           <button type="button" onClick={onForgetAll} className="btn btn-danger-quiet w-full">

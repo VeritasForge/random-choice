@@ -79,6 +79,23 @@ describe("기록 저장과 조회", () => {
     expect(raw.map((v) => v.placeId)).toEqual(["fresh", "new"]);
   });
 
+  // **이 시험이 카카오 약관 경계를 지킨다.** 설계 문서 9절이 근거다 — 카카오는
+  // 사용자가 직접 고른 장소의 ID·상호와 우리가 만든 날짜만 저장을 허용했고,
+  // 분류 문자열을 입력으로 계산해 낸 우리 종류 식별자는 "응답에 기반한 가공
+  // 데이터"로 읽힐 여지가 있어 일부러 뺐다(같은 문서 11-2절이 이 시험을 필수로
+  // 지정했고 13절 완료 조건에도 있다).
+  //
+  // 읽기 함수를 통하지 않고 저장된 원본 JSON의 키 집합을 직접 본다. Visit에
+  // 필드를 하나 더하는 것을 tsc는 막지 못하므로, 읽기로 확인하면 나중에 필드가
+  // 늘어도 이 시험이 알아채지 못한다.
+  it("기록에 음식 종류가 들어가지 않는다", () => {
+    const store = fakeStore();
+    recordVisit(store, "p1", "연돈", NOW);
+    const raw = JSON.parse(store.data[STORAGE_KEY]) as Record<string, unknown>[];
+    expect(raw).toHaveLength(1);
+    expect(Object.keys(raw[0]).sort()).toEqual(["at", "placeId", "placeName"]);
+  });
+
   it("지울 때도 보관 기간 지난 기록은 저장소에서 함께 지운다", () => {
     const store = fakeStore({
       [STORAGE_KEY]: JSON.stringify([
@@ -164,6 +181,16 @@ describe("지운 기록 되돌리기", () => {
     expect(readVisits(store, NOW)).toHaveLength(0);
   });
 
+  // restoreVisits 위 주석이 "되돌릴 것이 없으면 저장소를 건드리지 않는다"고
+  // 계약을 선언하는데, 그것을 거는 시험이 없었다. 그 갈래를 지우면 기록이 없던
+  // 브라우저에도 "[]"가 새로 쓰인다 — 읽기 결과는 어느 쪽이든 빈 목록이라
+  // readVisits로는 차이가 보이지 않으므로 저장소를 직접 본다.
+  it("되돌릴 것이 없으면 저장소를 건드리지 않는다", () => {
+    const store = fakeStore();
+    restoreVisits(store, [], NOW);
+    expect(store.data[STORAGE_KEY]).toBeUndefined();
+  });
+
   // 걸러 내지 않으면 같은 가게가 목록에 두 번 나온다(restoreVisits 위 주석 참고).
   it("같은 장소 ID가 둘이 되지 않는다", () => {
     const store = fakeStore();
@@ -234,6 +261,9 @@ describe("저장된 값이 망가졌을 때", () => {
     expect(readVisits(store, NOW)).toEqual([]);
   });
 
+  // 이 시험이 지키는 것은 load의 try/catch다. 배열이 아닌 값에는 .filter가 없어
+  // TypeError가 나고, 그것을 try/catch가 잡아 빈 목록으로 바꾼다(visits.ts의 load).
+  // try/catch를 지우면 예외가 밖으로 나가 이 시험이 실패한다.
   it("배열이 아니면 빈 목록을 돌려준다", () => {
     const store = fakeStore({ [STORAGE_KEY]: JSON.stringify({ placeId: "p1" }) });
     expect(readVisits(store, NOW)).toEqual([]);

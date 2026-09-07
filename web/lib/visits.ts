@@ -98,11 +98,20 @@ function load(store: Store | null): Visit[] {
       return [];
     }
     const parsed: unknown = JSON.parse(raw);
-    if (!Array.isArray(parsed)) {
-      return [];
-    }
+    // **배열인지 따로 검사하지 않는다.** 배열이 아닌 값(객체·문자열·숫자·null 등)은
+    // .filter가 없어 여기서 TypeError가 나고, 그것을 이 함수의 try/catch가 잡아
+    // 빈 목록으로 바꾼다. JSON.parse가 돌려줄 수 있는 값 중에 .filter로 부를 수
+    // 있는 것은 배열뿐이다 — 키 이름이 "filter"인 객체를 넣어도 그 값은 JSON 값이라
+    // 함수가 될 수 없다.
+    //
+    // 그래서 배열 검사를 두면 어느 시험도 닿을 수 없는 갈래가 남는다. 실제로
+    // 그랬다 — 그 세 줄을 지운 채 전체 시험을 돌려도 전부 통과했다. 시험이 바깥
+    // 방어를 통해 결과를 보고 있어서 안쪽 방어가 죽어도 초록불이었기 때문이다.
+    // 지금은 실제로 일하는 방어 하나만 두고, 그것을 시험이 지킨다
+    // (visits.test.ts의 "배열이 아니면 빈 목록을 돌려준다").
+    //
     // 항목별로 거른다. 하나가 망가졌다고 전부 버리면 사용자 기록이 통째로 사라진다.
-    return parsed.filter(isVisit);
+    return (parsed as unknown[]).filter(isVisit);
   } catch {
     return [];
   }
