@@ -74,11 +74,21 @@ type errorResponse struct {
 // 빈 문자열이면 검사하지 않는다 — 그 경우 누구나 부를 수 있다는 사실은 서버를 켜는
 // 자리(cmd/server/main.go)가 경고로 알린다.
 func NewHandler(finder PlaceFinder, internalKey string) http.Handler {
+	// 비밀값의 해시는 언제나 같은 값이라 여기서 한 번만 만든다. 요청마다 다시 만들면
+	// 그 계산 시간이 비밀값 길이에 따라(SHA-256은 64바이트 덩어리 단위로 돈다) 달라져,
+	// 해시로 없애려던 길이 누출이 아주 작게 되돌아온다.
+	// nil이면 검사하지 않는다는 뜻이다 — 이 파일이 finder에 쓰는 것과 같은 표현이다.
+	var wantKey *[sha256.Size]byte
+	if internalKey != "" {
+		sum := sha256.Sum256([]byte(internalKey))
+		wantKey = &sum
+	}
+
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/v1/nearby", func(w http.ResponseWriter, r *http.Request) {
 		// 카카오를 부르기 전에 막는다. 부른 다음에 401을 돌려주면 응답은 거절이어도
 		// 하루 호출 한도는 그대로 깎인다 — 이 검사가 지키려는 것이 바로 그 한도다.
-		if !authorized(r, internalKey) {
+		if !authorized(r, wantKey) {
 			writeError(w, http.StatusUnauthorized, "unauthorized",
 				"허가되지 않은 요청입니다.")
 			return
@@ -106,10 +116,11 @@ func NewHandler(finder PlaceFinder, internalKey string) http.Handler {
 }
 
 // authorized는 요청이 우리 화면 서버에서 온 것인지 본다.
+// wantKey는 NewHandler가 미리 만들어 둔 비밀값의 해시이고, nil이면 검사하지 않는다.
 //
-// 두 값을 SHA-256으로 줄인 뒤 비교하는 이유: subtle.ConstantTimeCompare는 내용에 대해서는
-// 일정한 시간이 걸리지만 "길이가 다르면 즉시 0을 돌려준다"고 표준 라이브러리 주석이
-// 밝히고 있다. 그대로 쓰면 비밀값의 길이가 응답 시간에 드러난다.
+// 들어온 값도 SHA-256으로 줄여 비교하는 이유: subtle.ConstantTimeCompare는 내용에
+// 대해서는 일정한 시간이 걸리지만 "길이가 다르면 즉시 0을 돌려준다"고 표준 라이브러리
+// 주석이 밝히고 있다. 값을 그대로 넘기면 비밀값의 길이가 응답 시간에 드러난다.
 // 해시는 언제나 32바이트라, 줄여 놓고 비교하면 비교 시간이 입력 길이와 무관해진다.
 //
 // 이 성질은 시험이 지켜 주지 못한다. ==로 바꿔도 무엇을 통과시키고 무엇을 막는지는
@@ -117,13 +128,12 @@ func NewHandler(finder PlaceFinder, internalKey string) http.Handler {
 // 겨우 1ns 차이가 보이고(첫 글자부터 틀린 값 대 마지막 글자만 틀린 값), 요청 한 건
 // 단위로는 그 차이가 0으로 묻힌다. 그래서 이 주석이 유일한 방어다.
 // 바꾸려는 사람은 위 이유를 먼저 읽어야 한다.
-func authorized(r *http.Request, internalKey string) bool {
-	if internalKey == "" {
+func authorized(r *http.Request, wantKey *[sha256.Size]byte) bool {
+	if wantKey == nil {
 		return true
 	}
 	got := sha256.Sum256([]byte(r.Header.Get(internalKeyHeader)))
-	want := sha256.Sum256([]byte(internalKey))
-	return subtle.ConstantTimeCompare(got[:], want[:]) == 1
+	return subtle.ConstantTimeCompare(got[:], wantKey[:]) == 1
 }
 
 func handleNearby(w http.ResponseWriter, r *http.Request, finder PlaceFinder) {

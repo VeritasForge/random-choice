@@ -58,6 +58,9 @@ export const GEO_TEXT: Record<GeoErrorCode, ErrorNotice> = {
  *     errors.test.ts가 서버 소스에서 코드를 뽑아 이 표와 대조하므로,
  *     여기 목록을 손으로 관리하지 않는다(관리하면 반드시 어긋난다).
  *   - 서버 호출(lib/api.ts): network_error · timeout · malformed_response · unknown_error
+ *   - 중계(lib/proxy.ts): api_unreachable — 화면 서버가 Go 서버에 닿지 못한 경우다.
+ *     Go가 아니라 화면 서버가 만드는 코드라, 위의 Go 소스 대조에는 잡히지 않는다.
+ *     그 대조는 "서버가 내는 코드가 전부 이 표에 있는가" 한 방향이라 여기 더해도 깨지지 않는다.
  * 그 밖에 예상하지 못한 오류는 unexpected로 들어온다.
  */
 const ERROR_TEXT: Record<string, ErrorNotice> = {
@@ -112,6 +115,16 @@ const ERROR_TEXT: Record<string, ErrorNotice> = {
     title: "서버에 연결하지 못했어요",
     description: "인터넷 연결을 확인한 뒤 다시 시도해 주세요.",
     retryable: true,
+  },
+  // network_error와 갈라 두는 이유: 그쪽은 브라우저가 화면 서버에 못 닿은 것이고
+  // (사용자의 인터넷을 의심할 만하다), 이쪽은 화면 서버가 조회 서버에 못 닿은 것이라
+  // 사용자의 인터넷과 무관하다. 원인이 대개 주소 설정이나 서버 중단이라 다시 눌러도
+  // 낫지 않으므로 재시도를 권하지 않는다.
+  api_unreachable: {
+    title: "조회 서버에 닿지 못했어요",
+    description:
+      "조회를 맡은 서버에 연결하지 못했습니다. 그 서버가 멎었거나 주소 설정이 잘못됐을 수 있습니다. 페이지를 새로 열어도 같으면 관리자에게 알려 주세요.",
+    retryable: false,
   },
   timeout: {
     title: "응답이 너무 오래 걸려요",

@@ -11,9 +11,12 @@ import type { NextConfig } from "next";
 // 조회가 나갈 주소를 정하는 값이라, 없으면 배포본의 모든 조회가 개발용 주소로 나가
 // 전부 실패한다. 화면에는 아무 단서도 남지 않으므로 여기서 알린다.
 //
-// 이 경고는 빌드할 때(next build) 뜬다. next start로 켤 때도 이 파일은 읽히지만,
-// 그때는 NODE_ENV가 production으로 설정된 환경에서만 뜬다 — Next.js가 이 파일을 읽는
-// 시점에 그 값을 스스로 채워 두지는 않는다(로컬에서 두 경우를 각각 켜 확인했다).
+// 이 경고는 빌드할 때(next build)도 뜨고 서버를 켤 때(next start)도 뜬다.
+// NODE_ENV를 따로 주지 않아도 Next.js가 스스로 production으로 채운다.
+//
+// 다만 켤 때는 "✓ Ready" 줄보다 **뒤에** 뜬다. Next.js가 이 파일을 그만큼 늦게 읽기
+// 때문이다. Ready를 보자마자 로그를 덮으면 경고를 놓치기 쉬우니, 이 값을 확인할 때는
+// 그 뒤까지 봐야 한다.
 if (!process.env.API_ORIGIN && process.env.NODE_ENV === "production") {
   console.warn(
     "[random-choice] API_ORIGIN이 설정되지 않았습니다. 조회 요청이 http://localhost:8080 으로 " +

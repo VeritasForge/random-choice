@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { INTERNAL_KEY_HEADER, proxyNearby, type Fetcher } from "./proxy";
+import {
+  INTERNAL_KEY_HEADER,
+  proxyNearby,
+  UNREACHABLE_ERROR_CODE,
+  type Fetcher,
+} from "./proxy";
 
 /**
  * 가짜 호출자. 받은 주소와 요청 설정을 기록하고, 미리 정해 둔 응답을 돌려준다.
@@ -97,5 +102,33 @@ describe("proxyNearby", () => {
 
     expect(response.status).toBe(502);
     expect(response.headers.get("Cache-Control")).toBe("no-store");
+  });
+
+  describe("조회 서버에 닿지 못했을 때", () => {
+    // 목적지가 없거나(주소가 틀렸거나 서버가 멎었다) 비밀값에 ASCII 밖의 글자가 있으면
+    // fetch가 던진다. 그대로 나가면 본문 없는 500이 되고, 화면은 코드를 못 읽어
+    // "문제가 생겼어요"와 눌러도 낫지 않는 다시 시도 버튼을 그린다.
+    const throwing: Fetcher = async () => {
+      throw new TypeError("fetch failed");
+    };
+
+    it("우리 잘못이 아니라 위쪽에 못 닿은 것이므로 502로 답한다", async () => {
+      const response = await proxyNearby(SEARCH, ORIGIN, "k3y-abc123", throwing);
+      expect(response.status).toBe(502);
+    });
+
+    it("본문이 이 저장소의 오류 형식이라 화면이 안내 문구를 고를 수 있다", async () => {
+      const response = await proxyNearby(SEARCH, ORIGIN, "k3y-abc123", throwing);
+      const body = await response.json();
+
+      expect(body.error).toBe(UNREACHABLE_ERROR_CODE);
+      expect(typeof body.message).toBe("string");
+      expect(body.message.length).toBeGreaterThan(0);
+    });
+
+    it("이때도 Cache-Control: no-store를 붙인다", async () => {
+      const response = await proxyNearby(SEARCH, ORIGIN, "k3y-abc123", throwing);
+      expect(response.headers.get("Cache-Control")).toBe("no-store");
+    });
   });
 });

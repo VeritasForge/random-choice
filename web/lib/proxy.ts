@@ -25,6 +25,23 @@ export type Fetcher = (url: string, init?: RequestInit) => Promise<Response>;
 export const INTERNAL_KEY_HEADER = "X-Internal-Key";
 
 /**
+ * Go 서버에 닿지 못했을 때 쓰는 오류 코드.
+ *
+ * **이 코드는 Go 서버가 아니라 이 파일이 만든다.** 그 구분이 중요한 이유:
+ * errors.test.ts가 Go 소스(handler.go)에서 오류 코드를 뽑아 화면 표와 대조하는데,
+ * 그 대조는 "서버가 내는 코드가 전부 표에 있는가" 한 방향이다. 그래서 화면 쪽이
+ * 만드는 코드를 표에 더해도 그 시험은 깨지지 않는다 — 다만 나중에 누가 이 코드를
+ * 서버 코드로 착각해 handler.go에서 찾다가 없어서 지우는 일이 없도록, 어디서 나는
+ * 코드인지 여기와 errors.ts 양쪽에 적어 둔다.
+ *
+ * 글자를 errors.ts와 나눠 갖지 않고 양쪽에 적는 이유: errors.ts는 브라우저로 나가는
+ * 코드가 쓰는 파일이고 이 파일은 서버에서만 도는 코드라, 값 하나를 공유하자고
+ * errors.ts가 이 파일을 들여오면 서버 전용 코드가 브라우저 묶음에 딸려 갈 수 있다.
+ * Go와 화면이 오류 코드 글자를 나눠 갖지 않는 것과 같은 사정이다.
+ */
+export const UNREACHABLE_ERROR_CODE = "api_unreachable";
+
+/**
  * 조회 요청을 Go 서버로 넘기고 그 응답을 그대로 돌려준다.
  *
  * @param search 브라우저가 보낸 질의 문자열("?lat=...&lng=...&radius=..."). 손대지 않고 넘긴다.
@@ -47,7 +64,25 @@ export async function proxyNearby(
     headers[INTERNAL_KEY_HEADER] = internalKey;
   }
 
-  const upstream = await fetcher(`${apiOrigin}/api/v1/nearby${search}`, { headers });
+  let upstream: Response;
+  try {
+    upstream = await fetcher(`${apiOrigin}/api/v1/nearby${search}`, { headers });
+  } catch (cause) {
+    // 여기까지 오는 경우는 둘이다. Go 서버에 닿지 못했거나(주소가 틀렸거나 그 서버가
+    // 멎었다), 비밀값에 ASCII 밖의 글자가 있어 요청을 만들다 실패했거나.
+    // 그냥 던지면 라우트 핸들러 밖으로 나가 본문 없는 500이 되고, 화면은 서버가 준
+    // 코드를 읽지 못해 "문제가 생겼어요"와 눌러도 낫지 않는 다시 시도 버튼을 그린다.
+    // 원인을 아는 것은 이 자리뿐이므로 여기서 우리 오류 형식으로 바꿔 준다.
+    //
+    // 상태 코드가 502인 이유: 못 한 것은 우리가 아니라 우리가 부른 상대다.
+    // 원인은 서버 기록에만 남긴다 — 주소 같은 것이 브라우저로 나가면 안 된다.
+    console.error("[proxyNearby] 조회 서버에 닿지 못했습니다", cause);
+    return errorResponse(
+      502,
+      UNREACHABLE_ERROR_CODE,
+      "조회 서버에 연결하지 못했습니다.",
+    );
+  }
 
   // 상태 코드와 본문을 손대지 않고 넘긴다. 오류일 때도 마찬가지다 — 화면의
   // errors.ts가 서버가 준 코드로 안내 문구를 고르기 때문에, 여기서 삼키면
@@ -66,4 +101,19 @@ export async function proxyNearby(
   responseHeaders.set("Cache-Control", "no-store");
 
   return new Response(body, { status: upstream.status, headers: responseHeaders });
+}
+
+/**
+ * 중계가 스스로 만드는 오류 응답. Go 서버의 writeError와 같은 형식이라
+ * 화면(lib/api.ts·lib/errors.ts)이 서버가 준 오류와 똑같이 다룰 수 있다.
+ * 캐시 금지는 이쪽에도 붙인다 — 오류라고 저장을 허락할 이유가 없다.
+ */
+function errorResponse(status: number, code: string, message: string): Response {
+  return new Response(JSON.stringify({ error: code, message }), {
+    status,
+    headers: {
+      "Content-Type": "application/json; charset=utf-8",
+      "Cache-Control": "no-store",
+    },
+  });
 }
