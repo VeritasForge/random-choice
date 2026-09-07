@@ -2808,6 +2808,251 @@ git commit -m "docs: 달라진 동작과 새로 알게 된 한계를 README에 �
 
 ---
 
+### 작업 13: 지운 기록 되돌리기 (계획에 없던 것 — 검토가 찾음)
+
+**이 작업은 원래 계획 열두 개에 없었습니다.** 작업 11(디자인)의 검토가 "기록을 지우는 두
+버튼에 확인도 되돌리기도 없다"는 것을 찾았고, 설계 문서 6-1절이 컨셉의 "강압적이지 않음"을
+"짧은 상호작용과 **되돌리기 쉬운 버튼**"으로 구현한다고 적고 있어 넣기로 했습니다.
+판단의 근거는 `docs/autopilot/lunch-upgrade/DECISIONS.md` 13번에 있습니다.
+
+
+### 왜 하는가
+
+기록 화면의 `지우기`·`전체 지우기`는 누르면 그대로 사라지고 되돌릴 방법이 없다.
+`전체 지우기`는 최대 14일치를 한 번에 없앤다.
+
+이 화면은 **서서 걸으며 한 손으로 쓰는 것을 전제로** 만들었다. 그리고 기록은 이번
+고도화의 첫 변경("기억")이 만드는 것이고 회피 기능 전체가 그 위에 선다. 기록이
+사라지면 "지난번에 보낸 곳으로 오늘 또 보낸다"는 원래 문제로 그대로 돌아간다.
+
+**확인 대화상자는 넣지 않는다.** 설계 문서 6-1절이 컨셉의 "강압적이지 않음"을
+**"짧은 상호작용과 되돌리기 쉬운 버튼"**으로 구현한다고 적고 있다. 같은 절의
+"재확인 질문 없음"은 점심을 내놓는 동작에 관한 말이지 데이터를 없애는 동작이 아니다.
+그러니 되돌리기는 컨셉과 어긋나기는커녕 컨셉이 요구하는 쪽이다.
+
+### 만드는 것
+
+지운 기록을 잠깐 메모리에 들고, 기록 화면에 "n곳을 지웠어요 · 되돌리기"를 보여 준다.
+화면을 벗어나면 되돌리기는 사라진다. **저장소에 휴지통을 만들지 않는다** — 무엇을
+저장하는가의 경계는 카카오 약관과 얽혀 있고(설계 문서 9절), 지금 그 경계를 다시 열
+이유가 없다.
+
+### 파일
+
+- 수정: `web/lib/visits.ts` — `restoreVisits` 추가
+- 수정: `web/lib/visits.test.ts` — 그 시험
+- 수정: `web/lib/reasons.ts` — `forgetNotice` 추가
+- 수정: `web/lib/reasons.test.ts` — 그 시험
+- 수정: `web/app/page.tsx` — 되돌리기 상태와 연결
+- 수정: `web/components/VisitsScreen.tsx` — 안내 줄과 버튼
+
+### 인터페이스
+
+이 작업이 만드는 것:
+
+```ts
+// web/lib/visits.ts
+export function restoreVisits(
+  store: Store | null,
+  restored: readonly Visit[],
+  now?: Date,
+): void;
+
+// web/lib/reasons.ts
+export function forgetNotice(count: number): string | null;
+```
+
+이 작업이 쓰는 것(이미 있고, 서명을 바꾸지 마라):
+
+```ts
+// web/lib/visits.ts
+export type Visit = { placeId: string; placeName: string; at: string };
+export type Store = {
+  getItem(key: string): string | null;
+  setItem(key: string, value: string): void;
+  removeItem(key: string): void;
+};
+export const STORAGE_KEY: string;      // "random-choice.visits.v1"
+export const RETENTION_DAYS: number;   // 14
+export function readVisits(store: Store | null, now?: Date): Visit[];
+export function forgetVisit(store: Store | null, placeId: string, now?: Date): void;
+export function forgetAll(store: Store | null): void;
+```
+
+`visits.ts` 안에는 이미 `load`·`save`·`withoutExpired`·`isVisit`이 모듈 안쪽 함수로
+있다. `restoreVisits`는 그것들을 그대로 쓴다. **새로 만들지 마라.**
+
+---
+
+### 단계
+
+#### 1단계 — `restoreVisits`의 실패하는 시험을 쓴다
+
+`web/lib/visits.test.ts`에 넣는다. 그 파일에 이미 가짜 저장소가 있으니 그것을 쓴다
+(없으면 그 파일의 기존 패턴을 그대로 따른다).
+
+시험 넷:
+
+1. **지운 것을 그대로 되돌린다.** 두 곳을 기록하고, 하나를 `forgetVisit`으로 지우고,
+   지운 그 항목을 `restoreVisits`로 넣으면 `readVisits`가 다시 두 곳을 돌려준다.
+2. **`forgetAll` 뒤에도 되돌아온다.** 세 곳을 기록하고 `forgetAll` 한 뒤 그 셋을
+   `restoreVisits`로 넣으면 셋이 전부 돌아온다.
+3. **보관 기간이 지난 항목은 되돌리지 않는다.** `at`이 20일 전인 항목을 넣어도
+   `readVisits`에 안 나온다. — 이 시험이 `withoutExpired`를 거치는지 지킨다.
+4. **같은 장소 ID가 둘이 되지 않는다.** 이미 저장소에 있는 가게를 `restoreVisits`로
+   또 넣어도 목록에 한 번만 나온다. `recordVisit`이 같은 규칙을 지키고 있으므로
+   같은 규칙을 따른다.
+5. **저장소가 null이면 아무 일도 일어나지 않는다.** 예외를 던지지 않는다.
+
+각 시험에 **무엇을 지키는 시험인지 한 줄 주석**을 붙여라. 이 저장소의 관례다.
+
+#### 2단계 — 시험이 실패하는 것을 확인한다
+
+```
+cd web && npx vitest run lib/visits.test.ts
+```
+
+기대: `restoreVisits`가 없어서 실패.
+
+#### 3단계 — `restoreVisits`를 만든다
+
+`recordVisit` 바로 아래에 둔다. 구조는 `recordVisit`과 같다.
+
+```ts
+/**
+ * 방금 지운 기록을 되돌린다.
+ *
+ * <여기에 왜 withoutExpired를 거치는지, 왜 같은 ID를 걸러 내는지 적어라.
+ *  recordVisit과 forgetVisit이 그 이유를 이미 적어 두었으니 읽고 맞춰 써라.>
+ */
+export function restoreVisits(
+  store: Store | null,
+  restored: readonly Visit[],
+  now: Date = new Date(),
+): void {
+  // 되돌릴 것이 없으면 저장소를 건드리지 않는다.
+  // 지금 저장된 것 중 되돌릴 ID와 겹치는 것을 빼고, 되돌릴 것을 붙인 뒤,
+  // 만료된 것을 걸러 저장한다.
+}
+```
+
+본문은 당신이 쓴다. `recordVisit`이 `withoutExpired(load(store), now).filter(...)` 뒤에
+`save`를 부르는 모양을 그대로 따르면 된다.
+
+#### 4단계 — `forgetNotice`의 실패하는 시험을 쓰고 만든다
+
+`web/lib/reasons.ts`의 `avoidNotice`가 **뺀 것이 없으면 null을 돌려주고 화면은 줄
+자체를 안 그리는** 모양이다. 같은 모양을 따른다.
+
+```ts
+export function forgetNotice(count: number): string | null;
+```
+
+- `forgetNotice(0)` → `null`
+- `forgetNotice(1)` → `"1곳을 지웠어요"`
+- `forgetNotice(3)` → `"3곳을 지웠어요"`
+- 음수도 `null` (0 이하를 한 갈래로 본다 — `avoidNotice`가 `removed <= 0`으로 그렇게 한다)
+
+시험을 먼저 쓰고 실패를 확인한 뒤 만들어라.
+
+#### 5단계 — 화면에 붙인다
+
+**`web/app/page.tsx`**
+
+기록과 회피 설정이 `View` 밖에 있는 것과 같은 이유로, 되돌릴 목록도 `View` 밖에 둔다.
+
+```ts
+const [undoable, setUndoable] = useState<Visit[]>([]);
+```
+
+- `forget(placeId)` — 지우기 전에 `visits`에서 그 항목을 골라 두고, 지운 뒤
+  `setUndoable(<고른 것>)`.
+- `forgetEverything()` — 지우기 전의 `visits` 전체를 `setUndoable`에 넣는다.
+- 새 함수 `undoForget()` — `undoable`이 비어 있으면 아무것도 안 한다. 아니면
+  `restoreVisits(store, undoable)` → `setVisits(readVisits(store))` → `setUndoable([])`.
+- `onBack`에서 `setUndoable([])`. **화면을 벗어나면 되돌리기가 사라진다는 것이
+  이 설계의 전제다.** 여기를 빠뜨리면 다음에 기록 화면에 들어왔을 때 오래된 안내가
+  떠 있고, 누르면 사용자가 잊은 항목이 되살아난다.
+
+**`web/components/VisitsScreen.tsx`**
+
+새 Props 둘:
+
+```ts
+/** 방금 지운 곳 수. 0이면 안내 줄을 그리지 않는다. 문구는 web/lib/reasons.ts가 만든다. */
+undoneCount: number;
+onUndo: () => void;
+```
+
+안내 줄은 목록 **위**(회피 스위치 아래)에 둔다. 지운 직후 눈이 가 있는 자리다.
+
+- `forgetNotice(undoneCount)`가 `null`이면 줄 자체를 그리지 않는다.
+- 안내 줄에는 **`aria-live="polite"`**를 단다. 이 화면에는 지금 낭독기 통지 영역이
+  하나도 없다 — 다른 화면 셋(`StartScreen`·`CandidateScreen`·`ResultScreen`)에는 있다.
+  지우기가 성공했다는 사실이 낭독기 사용자에게 전혀 전달되지 않고 있었다.
+- `되돌리기` 버튼은 `btn btn-quiet btn-sm`을 쓴다. 강조색을 쓰지 마라 — 강조색은
+  결과와 주요 버튼 전용이다.
+- 결과 화면의 `bg-surface` 안내 상자와 같은 모양을 쓰면 화면 사이 일관성이 선다.
+  **그 상자에 테두리가 있는지 확인하고 맞춰라** — 바로 앞 작업에서 손댄 자리다.
+
+**포커스**
+
+지금 `지우기`를 누르면 그 버튼이 든 줄이 통째로 사라져 포커스가 `body`로 떨어진다.
+키보드·낭독기 사용자는 자기가 어디 있는지 잃는다. 이것은 이 작업 전부터 있던 결함이고,
+되돌리기를 붙이면서 제대로 고칠 수 있다.
+
+- **지운 직후 포커스를 `되돌리기` 버튼으로 옮긴다.** 사라진 자리를 대신하고, 되돌리는
+  것이 바로 다음에 하고 싶을 만한 일이며, 되돌리기는 파괴적이지 않다.
+- **되돌린 직후**에는 안내 줄이 사라지므로 포커스를 `최근에 정하신 곳` 제목으로 옮긴다.
+  `tabIndex={-1}`과 `ref`가 필요하다. `ResultScreen`이 "정하신 곳"에 쓰는 것과 같은 수법이니
+  그 코드를 읽고 맞춰 써라.
+
+이 두 가지는 node 시험으로 확인할 수 없다. **실제 브라우저로 확인하고 관찰한 것을
+보고에 적어라.** `document.activeElement`를 찍어 보면 된다.
+
+#### 6단계 — 방어를 껐을 때 시험이 실제로 실패하는지 확인한다
+
+**이 단계를 건너뛰지 마라.** 이 저장소에서 아무것도 지키지 않는 시험이 지금까지 열한 개
+나왔다. 통과하는 시험은 증거가 아니다.
+
+두 가지를 일부러 망가뜨리고 각각 어느 시험이 실패하는지 확인한다.
+
+1. `restoreVisits`에서 `withoutExpired` 호출을 뺀다 → 1단계의 셋째 시험이 실패해야 한다.
+2. `restoreVisits`에서 같은 ID를 거르는 `filter`를 뺀다 → 넷째 시험이 실패해야 한다.
+3. `forgetNotice`의 `count <= 0` 갈래를 없앤다 → 그 시험이 실패해야 한다.
+
+**실패하지 않는 것이 있으면 그 시험이 헛도는 것이다.** 시험을 고치고 다시 확인하라.
+망가뜨린 코드는 전부 되돌린 뒤 다음 단계로 간다.
+
+#### 7단계 — 전체 검사와 커밋
+
+```
+just check
+```
+
+서버 시험·`go vet`, 화면 빌드·시험·타입 검사·린트가 전부 통과해야 한다.
+
+커밋할 때는 파일을 하나씩 지정해 스테이징한다. 전체 스테이징 명령을 쓰지 마라.
+`docs/autopilot/lunch-upgrade/STATE.md`는 절대 스테이징하지 마라.
+커밋 메시지는 한국어, Conventional Commits 형식.
+
+---
+
+### 경계
+
+- **`api/`를 건드리지 않는다.** 서버는 이 작업과 무관하다.
+- **`README.md`를 건드리지 않는다.** 문서 갱신은 따로 한다.
+- **새 의존성을 넣지 않는다.** `web/package.json`은 변경 대상이 아니다.
+- **저장소에 새 열쇠를 만들지 않는다.** 되돌릴 목록은 메모리에만 있다.
+- **`Visit` 타입에 필드를 더하지 않는다.** 세 필드가 카카오 약관이 정한 경계다
+  (`web/lib/visits.ts` 맨 위 주석 참고).
+- **기존 함수의 서명을 바꾸지 않는다.**
+- 화면 시험은 브라우저 없이 돈다(`web/vitest.config.mts`가 `environment: "node"`,
+  jsdom도 testing-library도 없다). 새 시험은 전부 `web/lib/`의 순수 함수 수준에 둔다.
+  jsdom을 새로 들이지 마라.
+
+---
+
 ## 전체 완료 확인
 
 모든 작업이 끝난 뒤 아래를 **실제로 실행하고 출력을 확인**합니다.
