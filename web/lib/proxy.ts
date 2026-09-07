@@ -16,6 +16,17 @@
  */
 
 /**
+ * 조회 서버에 닿지 못했을 때 쓰는 오류 코드. **글자는 errors.ts에 하나만 둔다.**
+ *
+ * 이 코드는 Go 서버가 아니라 이 파일이 만들기 때문에, Go 소스를 훑는 errors.test.ts의
+ * 대조가 잡아 주지 않는다. 글자를 이 파일에도 따로 적으면 한쪽만 바뀌어도 아무 시험이
+ * 실패하지 않고, 그 순간 안내 표에 없는 코드가 되어 "눌러도 낫지 않는 다시 시도 버튼"이
+ * 돌아온다. 그래서 안내 문구를 가진 쪽(errors.ts)을 단일 출처로 삼고 여기서 들여온다.
+ * 이 방향이 안전한 이유는 errors.ts의 상수 주석에 적혀 있다.
+ */
+import { UNREACHABLE_ERROR_CODE } from "./errors";
+
+/**
  * 조회를 실제로 보내는 함수. 시험에서 가짜를 넣을 수 있도록 인자로 받는다 —
  * 이 저장소가 난수 생성기와 저장소에 쓰는 것과 같은 수법이다.
  */
@@ -23,23 +34,6 @@ export type Fetcher = (url: string, init?: RequestInit) => Promise<Response>;
 
 /** Go 서버가 요구하는 헤더 이름. api/internal/httpapi/handler.go의 internalKeyHeader와 같은 값이다. */
 export const INTERNAL_KEY_HEADER = "X-Internal-Key";
-
-/**
- * Go 서버에 닿지 못했을 때 쓰는 오류 코드.
- *
- * **이 코드는 Go 서버가 아니라 이 파일이 만든다.** 그 구분이 중요한 이유:
- * errors.test.ts가 Go 소스(handler.go)에서 오류 코드를 뽑아 화면 표와 대조하는데,
- * 그 대조는 "서버가 내는 코드가 전부 표에 있는가" 한 방향이다. 그래서 화면 쪽이
- * 만드는 코드를 표에 더해도 그 시험은 깨지지 않는다 — 다만 나중에 누가 이 코드를
- * 서버 코드로 착각해 handler.go에서 찾다가 없어서 지우는 일이 없도록, 어디서 나는
- * 코드인지 여기와 errors.ts 양쪽에 적어 둔다.
- *
- * 글자를 errors.ts와 나눠 갖지 않고 양쪽에 적는 이유: errors.ts는 브라우저로 나가는
- * 코드가 쓰는 파일이고 이 파일은 서버에서만 도는 코드라, 값 하나를 공유하자고
- * errors.ts가 이 파일을 들여오면 서버 전용 코드가 브라우저 묶음에 딸려 갈 수 있다.
- * Go와 화면이 오류 코드 글자를 나눠 갖지 않는 것과 같은 사정이다.
- */
-export const UNREACHABLE_ERROR_CODE = "api_unreachable";
 
 /**
  * 조회 요청을 Go 서버로 넘기고 그 응답을 그대로 돌려준다.
@@ -65,29 +59,34 @@ export async function proxyNearby(
   }
 
   let upstream: Response;
+  let body: string;
   try {
     upstream = await fetcher(`${apiOrigin}/api/v1/nearby${search}`, { headers });
+    // 상태 코드와 본문을 손대지 않고 넘긴다. 오류일 때도 마찬가지다 — 화면의
+    // errors.ts가 서버가 준 코드로 안내 문구를 고르기 때문에, 여기서 삼키면
+    // 사용자는 무엇이 잘못됐는지 알 방법이 없어진다.
+    //
+    // 본문 읽기를 같은 try 안에 두는 이유: 머리는 받았는데 본문이 오는 도중 연결이
+    // 끊길 수 있다. 그것도 위쪽에서 답을 받지 못한 것이므로 아래와 같이 다뤄야 한다.
+    // 밖으로 던지면 다시 본문 없는 500이 되어, 이 갈래가 막으려던 것이 좁게 되살아난다.
+    body = await upstream.text();
   } catch (cause) {
-    // 여기까지 오는 경우는 둘이다. Go 서버에 닿지 못했거나(주소가 틀렸거나 그 서버가
-    // 멎었다), 비밀값에 ASCII 밖의 글자가 있어 요청을 만들다 실패했거나.
+    // 여기까지 오는 경우는 셋이다. Go 서버에 닿지 못했거나(주소가 틀렸거나 그 서버가
+    // 멎었다), 비밀값에 ASCII 밖의 글자가 있어 요청을 만들다 실패했거나,
+    // 응답 본문을 받는 도중 끊겼거나.
     // 그냥 던지면 라우트 핸들러 밖으로 나가 본문 없는 500이 되고, 화면은 서버가 준
     // 코드를 읽지 못해 "문제가 생겼어요"와 눌러도 낫지 않는 다시 시도 버튼을 그린다.
     // 원인을 아는 것은 이 자리뿐이므로 여기서 우리 오류 형식으로 바꿔 준다.
     //
     // 상태 코드가 502인 이유: 못 한 것은 우리가 아니라 우리가 부른 상대다.
     // 원인은 서버 기록에만 남긴다 — 주소 같은 것이 브라우저로 나가면 안 된다.
-    console.error("[proxyNearby] 조회 서버에 닿지 못했습니다", cause);
+    console.error("[proxyNearby] 조회 서버에서 응답을 받지 못했습니다", cause);
     return errorResponse(
       502,
       UNREACHABLE_ERROR_CODE,
-      "조회 서버에 연결하지 못했습니다.",
+      "조회 서버에서 응답을 받지 못했습니다.",
     );
   }
-
-  // 상태 코드와 본문을 손대지 않고 넘긴다. 오류일 때도 마찬가지다 — 화면의
-  // errors.ts가 서버가 준 코드로 안내 문구를 고르기 때문에, 여기서 삼키면
-  // 사용자는 무엇이 잘못됐는지 알 방법이 없어진다.
-  const body = await upstream.text();
 
   const responseHeaders = new Headers();
   const contentType = upstream.headers.get("Content-Type");

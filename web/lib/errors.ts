@@ -50,17 +50,29 @@ export const GEO_TEXT: Record<GeoErrorCode, ErrorNotice> = {
 };
 
 /**
+ * 중계(lib/proxy.ts)가 조회 서버에 닿지 못했을 때 내는 코드.
+ *
+ * **글자의 단일 출처는 이 파일이고, proxy.ts가 여기서 들여다 쓴다.** 방향이 이쪽인 이유:
+ * 반대로 이 파일이 proxy.ts를 들여오면 안 된다 — 이 파일은 브라우저에서 도는
+ * app/page.tsx("use client")가 쓰므로, 서버에서만 도는 파일을 들여오면 그것이 브라우저
+ * 묶음에 딸려 간다. 이 방향은 안전하다: 이 파일이 들여오는 것은 lib/geo.ts의 **타입**뿐이라
+ * (import type은 컴파일 뒤 사라진다) 서버 쪽으로 브라우저 전용 코드가 따라가지 않는다.
+ * "서버 전용 파일을 들여오면 안 되지 않나"라고 되돌리기 전에 이 문단을 먼저 읽을 것.
+ */
+export const UNREACHABLE_ERROR_CODE = "api_unreachable";
+
+/**
  * 오류 코드마다 보여 줄 안내 문구.
  *
- * 여기 담긴 코드는 세 곳에서 온다:
+ * 여기 담긴 코드는 네 곳에서 온다:
  *   - 위치 확인(lib/geo.ts): 위 GEO_TEXT
  *   - 서버(api/internal/httpapi/handler.go): 그 파일이 내는 코드 전부.
  *     errors.test.ts가 서버 소스에서 코드를 뽑아 이 표와 대조하므로,
  *     여기 목록을 손으로 관리하지 않는다(관리하면 반드시 어긋난다).
  *   - 서버 호출(lib/api.ts): network_error · timeout · malformed_response · unknown_error
- *   - 중계(lib/proxy.ts): api_unreachable — 화면 서버가 Go 서버에 닿지 못한 경우다.
- *     Go가 아니라 화면 서버가 만드는 코드라, 위의 Go 소스 대조에는 잡히지 않는다.
- *     그 대조는 "서버가 내는 코드가 전부 이 표에 있는가" 한 방향이라 여기 더해도 깨지지 않는다.
+ *   - 중계(lib/proxy.ts): UNREACHABLE_ERROR_CODE — 화면 서버가 Go 서버에 닿지 못한 경우다.
+ *     Go가 아니라 화면 서버가 만드는 코드라 위의 Go 소스 대조에는 잡히지 않는다.
+ *     그래서 글자를 위의 상수 하나로 두고 proxy.ts가 그것을 들여다 쓴다.
  * 그 밖에 예상하지 못한 오류는 unexpected로 들어온다.
  */
 const ERROR_TEXT: Record<string, ErrorNotice> = {
@@ -120,7 +132,12 @@ const ERROR_TEXT: Record<string, ErrorNotice> = {
   // (사용자의 인터넷을 의심할 만하다), 이쪽은 화면 서버가 조회 서버에 못 닿은 것이라
   // 사용자의 인터넷과 무관하다. 원인이 대개 주소 설정이나 서버 중단이라 다시 눌러도
   // 낫지 않으므로 재시도를 권하지 않는다.
-  api_unreachable: {
+  //
+  // 열쇠를 글자로 적지 않고 상수로 두는 이유: 이 코드를 만드는 것은 lib/proxy.ts인데,
+  // 글자를 양쪽에 따로 적으면 한쪽만 바뀌어도 아무 시험이 실패하지 않는다. 그러면
+  // 표에 없는 코드가 되어 기본 안내로 떨어지고, 눌러도 낫지 않는 다시 시도 버튼이
+  // 다시 그려진다(retryable이 true인 기본값이라서다).
+  [UNREACHABLE_ERROR_CODE]: {
     title: "조회 서버에 닿지 못했어요",
     description:
       "조회를 맡은 서버에 연결하지 못했습니다. 그 서버가 멎었거나 주소 설정이 잘못됐을 수 있습니다. 페이지를 새로 열어도 같으면 관리자에게 알려 주세요.",

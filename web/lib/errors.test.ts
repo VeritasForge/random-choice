@@ -80,7 +80,13 @@ describe("errorNotice", () => {
   it("다시 시도해도 소용없는 오류는 재시도를 권하지 않는다", () => {
     // 이 표시가 뒤집히면 화면은 "관리자에게 알려 주세요"처럼 화면 밖 행동을 안내하면서
     // 정작 다시 시도 버튼을 보여 주는 막다른 길이 된다.
-    for (const code of ["not_configured", "invalid_key", "quota_exceeded", "invalid_radius"]) {
+    for (const code of [
+      "not_configured",
+      "invalid_key",
+      "quota_exceeded",
+      "invalid_radius",
+      "api_unreachable",
+    ]) {
       expect(errorNotice(code).retryable, `${code}는 재시도가 소용없다`).toBe(false);
     }
     for (const code of ["upstream_error", "network_error", "timeout", "position_unavailable"]) {

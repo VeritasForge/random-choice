@@ -1,10 +1,6 @@
 import { describe, expect, it } from "vitest";
-import {
-  INTERNAL_KEY_HEADER,
-  proxyNearby,
-  UNREACHABLE_ERROR_CODE,
-  type Fetcher,
-} from "./proxy";
+import { errorNotice, KNOWN_ERROR_CODES, UNREACHABLE_ERROR_CODE } from "./errors";
+import { INTERNAL_KEY_HEADER, proxyNearby, type Fetcher } from "./proxy";
 
 /**
  * 가짜 호출자. 받은 주소와 요청 설정을 기록하고, 미리 정해 둔 응답을 돌려준다.
@@ -128,6 +124,34 @@ describe("proxyNearby", () => {
 
     it("이때도 Cache-Control: no-store를 붙인다", async () => {
       const response = await proxyNearby(SEARCH, ORIGIN, "k3y-abc123", throwing);
+      expect(response.headers.get("Cache-Control")).toBe("no-store");
+    });
+
+    it("내보내는 코드에 화면 안내 문구가 딸려 있고, 재시도를 권하지 않는다", async () => {
+      // 위 시험들과 달리 여기서는 글자를 proxy.ts가 아니라 errors.ts 쪽에서 확인한다.
+      // 중계가 내는 글자가 안내 표와 어긋나는 순간, 화면은 그 코드를 모르는 코드로 보고
+      // 기본 안내(재시도 권함)로 떨어뜨린다 — 이 갈래가 없애려던 "눌러도 낫지 않는
+      // 다시 시도 버튼"이 그대로 돌아온다. 그래서 글자가 아니라 그 결과를 확인한다.
+      const response = await proxyNearby(SEARCH, ORIGIN, "k3y-abc123", throwing);
+      const body = await response.json();
+
+      expect(KNOWN_ERROR_CODES, "중계가 내는 코드에 안내 문구가 없다").toContain(body.error);
+      expect(errorNotice(body.error).retryable).toBe(false);
+    });
+
+    it("본문을 받는 도중 끊겨도 502와 오류 형식으로 답한다", async () => {
+      // 머리는 받았는데 본문 스트림이 오류를 내는 경우다. 이것을 밖으로 던지면
+      // 본문 없는 500이 되어, 위 갈래가 막은 것이 좁게 되살아난다.
+      const brokenStream = new ReadableStream({
+        start(controller) {
+          controller.error(new Error("본문을 받는 도중 끊겼다"));
+        },
+      });
+      const { fetcher } = fakeFetcher(new Response(brokenStream, { status: 200 }));
+
+      const response = await proxyNearby(SEARCH, ORIGIN, "k3y-abc123", fetcher);
+      expect(response.status).toBe(502);
+      expect((await response.json()).error).toBe(UNREACHABLE_ERROR_CODE);
       expect(response.headers.get("Cache-Control")).toBe("no-store");
     });
   });
