@@ -48,3 +48,30 @@ check:
     npm test
     npx tsc --noEmit
     npm run lint
+
+# Go 서버를 실서비스로 올린다.
+deploy-api:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    # --archive=tgz는 파일을 하나로 묶어 올린다. 파일 감시 방식으로 하나씩 올리면
+    # 잘 안 맞는 환경(예: 샌드박스)에서 걸리는 경우가 있어, 처음부터 안정적인 쪽을 쓴다.
+    cd api && vercel deploy --prod --yes --archive=tgz
+
+# 화면을 실서비스로 올린다. 서버가 먼저 올라가 있는 상태를 전제로 한다(아래 deploy 참고).
+deploy-web:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    cd web && vercel deploy --prod --yes --archive=tgz
+
+# 커밋 전 전체 검증 → 서버 → 화면 순서로 실서비스에 올린다.
+deploy: check deploy-api deploy-web
+    #!/usr/bin/env bash
+    set -euo pipefail
+    # 서버를 먼저 올리는 이유: 화면은 API_ORIGIN이 가리키는 주소로 조회를 요청이 올
+    # 때마다 읽는다(빌드에 굳지 않는다). 화면을 먼저 올리면 그사이 아직 없는 서버를
+    # 가리키는 순간이 생긴다 — 서버를 먼저 두면 그 틈이 없다.
+    #
+    # push해도 자동으로 배포되지 않는다(GitHub Actions를 쓰지 않는다). Vercel 계정에
+    # GitHub 로그인 연결이 없어 그 경로 자체가 없다(README "다시 올릴 때" 참고). 그래서
+    # 이 레시피로 손으로 올린다.
+    echo "배포 완료 — https://random-choice-gamma.vercel.app"

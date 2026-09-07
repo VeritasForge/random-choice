@@ -187,17 +187,29 @@ Go 서버는 도커 파일 없이 Vercel의 Go 방식으로 그대로 올라갑�
 
 ### 다시 올릴 때
 
-**push해도 자동으로 배포되지 않습니다.** Vercel 계정에 GitHub 로그인 연결이 없어서
-저장소와 이어 두지 못했습니다(연결하면 그때부터 자동으로 됩니다). 지금은 직접 올려야 합니다.
+**push해도 자동으로 배포되지 않습니다.** GitHub Actions를 쓰지 않습니다 — Vercel
+계정에 GitHub 로그인 연결이 없어서 저장소와 이어 두지 못했습니다. 그래서 `just deploy`
+한 줄로 손으로 올립니다.
 
 ```bash
-cd api  && vercel deploy --prod    # 서버를 고쳤을 때
-cd web  && vercel deploy --prod    # 화면을 고쳤을 때
+just deploy
 ```
 
-**서버를 먼저, 화면을 나중에 올리세요.** 화면은 `API_ORIGIN`이 가리키는 주소로 조회를
-넘기므로 그 주소가 먼저 있어야 합니다. 이 값은 브라우저의 요청이 올 때 읽습니다
-(`web/app/api/v1/nearby/route.ts`) — 예전처럼 빌드에 굳지 않습니다.
+커밋 전 전체 검증(`just check`)을 먼저 돌리고, 통과해야 서버 → 화면 순서로 올립니다.
+아래는 그 안에서 실제로 도는 명령입니다.
+
+```bash
+cd api && vercel deploy --prod --yes --archive=tgz    # 서버를 고쳤을 때
+cd web && vercel deploy --prod --yes --archive=tgz    # 화면을 고쳤을 때
+```
+
+한쪽만 다시 올리려면 `just deploy-api` 또는 `just deploy-web`을 씁니다(둘 다 검증을
+건너뜁니다 — 검증까지 원하면 `just check`를 먼저 따로 부르세요).
+
+**서버가 먼저인 이유.** 화면은 `API_ORIGIN`이 가리키는 주소로 조회를 넘기는데, 이 값을
+브라우저의 요청이 올 때마다 읽습니다(`web/app/api/v1/nearby/route.ts`) — 예전처럼
+빌드에 굳지 않습니다. 화면을 먼저 올리면 그사이 화면이 아직 없는 서버를 가리키는 순간이
+생기는데, 서버를 먼저 두면 그 틈이 없습니다.
 
 ### 환경변수 — 두 프로젝트에 네 자리
 
