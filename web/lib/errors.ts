@@ -84,6 +84,15 @@ const ERROR_TEXT: Record<string, ErrorNotice> = {
       "장소 조회에 쓰는 열쇠가 거부되었습니다. 열쇠를 고치기 전에는 조회할 수 없으니 관리자에게 알려 주세요.",
     retryable: false,
   },
+  // 브라우저는 이 코드를 볼 일이 거의 없다. 조회 서버에 비밀값을 붙이는 것은 화면
+  // 서버(app/api/v1/nearby/route.ts)이므로, 이 코드가 오면 두 서버의 INTERNAL_API_KEY가
+  // 서로 다르다는 뜻이다. 사용자가 할 수 있는 일이 없어 재시도를 권하지 않는다.
+  unauthorized: {
+    title: "화면과 서버가 서로를 알아보지 못해요",
+    description:
+      "두 서버가 나눠 갖는 값이 서로 맞지 않습니다. 맞추기 전에는 조회할 수 없으니 관리자에게 알려 주세요.",
+    retryable: false,
+  },
   internal_error: {
     title: "서버가 응답을 만들지 못했어요",
     description: "잠시 후 다시 시도해 주세요.",

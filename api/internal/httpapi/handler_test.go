@@ -17,23 +17,39 @@ import (
 )
 
 // fakeFinder는 카카오 대신 미리 정해 둔 답을 돌려준다.
+//
+// calls는 불린 횟수다. 비밀값 검사가 "막았는가"뿐 아니라 "카카오를 부르기 전에
+// 막았는가"까지 확인해야 해서 센다 — 부른 뒤에 막으면 응답은 거절이어도
+// 하루 호출 한도는 그대로 깎인다.
 type fakeFinder struct {
 	places []kakao.Place
 	err    error
+	calls  int
 	gotLat float64
 	gotLng float64
 	gotRad int
 }
 
 func (f *fakeFinder) SearchAround(_ context.Context, lat, lng float64, radius int) ([]kakao.Place, error) {
+	f.calls++
 	f.gotLat, f.gotLng, f.gotRad = lat, lng, radius
 	return f.places, f.err
 }
 
 func get(t *testing.T, handler http.Handler, target string) *httptest.ResponseRecorder {
 	t.Helper()
+	return getWithHeaders(t, handler, target, nil)
+}
+
+// getWithHeaders는 요청 헤더를 붙여 부른다. headers가 nil이면 아무 헤더도 붙이지 않는다.
+func getWithHeaders(t *testing.T, handler http.Handler, target string, headers map[string]string) *httptest.ResponseRecorder {
+	t.Helper()
+	req := httptest.NewRequest(http.MethodGet, target, nil)
+	for name, value := range headers {
+		req.Header.Set(name, value)
+	}
 	rec := httptest.NewRecorder()
-	handler.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, target, nil))
+	handler.ServeHTTP(rec, req)
 	return rec
 }
 
@@ -52,7 +68,7 @@ func TestNearbyReturnsCuisinesAndPlaces(t *testing.T) {
 		{ID: "2", Name: "가까운집", CategoryName: "음식점 > 분식", Distance: 100, Lat: 37.5, Lng: 127.0},
 		{ID: "3", Name: "고깃집둘", CategoryName: "음식점 > 한식 > 육류,고기 > 삼겹살", Distance: 200, Lat: 37.5, Lng: 127.0},
 	}}
-	rec := get(t, NewHandler(finder), "/api/v1/nearby?lat=37.5&lng=127.0")
+	rec := get(t, NewHandler(finder, ""), "/api/v1/nearby?lat=37.5&lng=127.0")
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("응답 코드가 %d다. 200이어야 한다 (본문: %s)", rec.Code, rec.Body.String())
@@ -97,7 +113,7 @@ func TestNearbyReturnsCuisinesAndPlaces(t *testing.T) {
 // 오류는 하나도 나지 않는다 — 응답 형태도 상태 코드도 정상이라 아무도 알아채지 못한다.
 func TestNearbyPassesCoordinatesToFinder(t *testing.T) {
 	finder := &fakeFinder{}
-	get(t, NewHandler(finder), "/api/v1/nearby?lat=37.5&lng=127.0")
+	get(t, NewHandler(finder, ""), "/api/v1/nearby?lat=37.5&lng=127.0")
 	if finder.gotLat != 37.5 {
 		t.Errorf("위도 %v를 넘겼다. 37.5여야 한다", finder.gotLat)
 	}
@@ -108,7 +124,7 @@ func TestNearbyPassesCoordinatesToFinder(t *testing.T) {
 
 func TestNearbyPassesRadiusToFinder(t *testing.T) {
 	finder := &fakeFinder{}
-	get(t, NewHandler(finder), "/api/v1/nearby?lat=37.5&lng=127.0&radius=1500")
+	get(t, NewHandler(finder, ""), "/api/v1/nearby?lat=37.5&lng=127.0&radius=1500")
 	if finder.gotRad != 1500 {
 		t.Errorf("반경 %d를 넘겼다. 1500이어야 한다", finder.gotRad)
 	}
@@ -116,7 +132,7 @@ func TestNearbyPassesRadiusToFinder(t *testing.T) {
 
 func TestNearbyUsesDefaultRadius(t *testing.T) {
 	finder := &fakeFinder{}
-	get(t, NewHandler(finder), "/api/v1/nearby?lat=37.5&lng=127.0")
+	get(t, NewHandler(finder, ""), "/api/v1/nearby?lat=37.5&lng=127.0")
 	if finder.gotRad != 500 {
 		t.Errorf("반경 %d를 넘겼다. 기본값 500이어야 한다", finder.gotRad)
 	}
@@ -127,7 +143,7 @@ func TestNearbyDropsPlacesWithoutCuisine(t *testing.T) {
 		{ID: "1", Name: "분류없음", CategoryName: "음식점", Distance: 10},
 		{ID: "2", Name: "분식집", CategoryName: "음식점 > 분식", Distance: 20},
 	}}
-	rec := get(t, NewHandler(finder), "/api/v1/nearby?lat=37.5&lng=127.0")
+	rec := get(t, NewHandler(finder, ""), "/api/v1/nearby?lat=37.5&lng=127.0")
 
 	var body struct {
 		Cuisines []struct {
@@ -158,7 +174,7 @@ func TestNearbyResponseCarriesCuisineIDAndLabel(t *testing.T) {
 		{ID: "1", Name: "고깃집", CategoryName: "음식점 > 한식 > 육류,고기",
 			Lat: 37.4, Lng: 127.0, Distance: 100},
 	}}
-	rec := get(t, NewHandler(finder), "/api/v1/nearby?lat=37.4&lng=127.0&radius=500")
+	rec := get(t, NewHandler(finder, ""), "/api/v1/nearby?lat=37.4&lng=127.0&radius=500")
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("상태 = %d, want 200. 본문: %s", rec.Code, rec.Body.String())
@@ -195,7 +211,7 @@ func TestNearbyExcludesNonLunchPlaces(t *testing.T) {
 		{ID: "2", Name: "밥집", CategoryName: "음식점 > 한식",
 			Lat: 37.4, Lng: 127.0, Distance: 60},
 	}}
-	rec := get(t, NewHandler(finder), "/api/v1/nearby?lat=37.4&lng=127.0&radius=500")
+	rec := get(t, NewHandler(finder, ""), "/api/v1/nearby?lat=37.4&lng=127.0&radius=500")
 
 	// 본문 전체를 훑으면 가게 이름이 아니라 주소·URL 어느 항목에 들어 있어도 통과한다.
 	// 응답을 파싱해 places 배열의 이름만 본다.
@@ -274,7 +290,7 @@ func TestNearbyCountsDropReasonsSeparately(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			logs := captureLogs(t)
 			finder := &fakeFinder{places: []kakao.Place{tt.dropped, bapjip}}
-			get(t, NewHandler(finder), "/api/v1/nearby?lat=37.4&lng=127.0")
+			get(t, NewHandler(finder, ""), "/api/v1/nearby?lat=37.4&lng=127.0")
 
 			if got := strings.Contains(logs.String(), "맞는 규칙이 없어"); got != tt.wantLog {
 				t.Errorf("\"맞는 규칙이 없어\" 경고 = %v, want %v. 로그: %s",
@@ -285,7 +301,7 @@ func TestNearbyCountsDropReasonsSeparately(t *testing.T) {
 }
 
 func TestNearbyReturnsEmptyArraysNotNull(t *testing.T) {
-	rec := get(t, NewHandler(&fakeFinder{}), "/api/v1/nearby?lat=37.5&lng=127.0")
+	rec := get(t, NewHandler(&fakeFinder{}, ""), "/api/v1/nearby?lat=37.5&lng=127.0")
 	got := rec.Body.String()
 	if got != `{"cuisines":[],"places":[]}`+"\n" {
 		t.Errorf("빈 결과는 null이 아니라 []여야 한다. 받은 본문: %s", got)
@@ -314,7 +330,7 @@ func TestNearbyRejectsBadInput(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			rec := get(t, NewHandler(&fakeFinder{}), tt.target)
+			rec := get(t, NewHandler(&fakeFinder{}, ""), tt.target)
 			if rec.Code != tt.wantCode {
 				t.Errorf("응답 코드가 %d다. %d여야 한다", rec.Code, tt.wantCode)
 			}
@@ -326,7 +342,7 @@ func TestNearbyRejectsBadInput(t *testing.T) {
 }
 
 func TestNearbyWithoutFinderSaysNotConfigured(t *testing.T) {
-	rec := get(t, NewHandler(nil), "/api/v1/nearby?lat=37.5&lng=127.0")
+	rec := get(t, NewHandler(nil, ""), "/api/v1/nearby?lat=37.5&lng=127.0")
 	if rec.Code != http.StatusInternalServerError {
 		t.Errorf("응답 코드가 %d다. 500이어야 한다", rec.Code)
 	}
@@ -339,7 +355,7 @@ func TestNearbyRejectsBadInputEvenWithoutFinder(t *testing.T) {
 	// 잘못된 요청은 호출자의 잘못이므로, 서버에 열쇠가 있든 없든 400으로 답해야 한다.
 	// 열쇠가 없다는 이유로 500을 돌려주면 책임을 잘못 돌리는 것이고,
 	// 설계 문서의 완료 조건도 열쇠 없이 이 400을 확인하도록 되어 있다.
-	rec := get(t, NewHandler(nil), "/api/v1/nearby?lat=999&lng=127.0")
+	rec := get(t, NewHandler(nil, ""), "/api/v1/nearby?lat=999&lng=127.0")
 	if rec.Code != http.StatusBadRequest {
 		t.Errorf("응답 코드가 %d다. 400이어야 한다", rec.Code)
 	}
@@ -349,7 +365,7 @@ func TestNearbyRejectsBadInputEvenWithoutFinder(t *testing.T) {
 }
 
 func TestNearbyMapsQuotaExceeded(t *testing.T) {
-	rec := get(t, NewHandler(&fakeFinder{err: kakao.ErrQuotaExceeded}), "/api/v1/nearby?lat=37.5&lng=127.0")
+	rec := get(t, NewHandler(&fakeFinder{err: kakao.ErrQuotaExceeded}, ""), "/api/v1/nearby?lat=37.5&lng=127.0")
 	if rec.Code != http.StatusTooManyRequests {
 		t.Errorf("응답 코드가 %d다. 429여야 한다", rec.Code)
 	}
@@ -359,7 +375,7 @@ func TestNearbyMapsQuotaExceeded(t *testing.T) {
 }
 
 func TestNearbyMapsUpstreamFailure(t *testing.T) {
-	rec := get(t, NewHandler(&fakeFinder{err: kakao.ErrUpstream}), "/api/v1/nearby?lat=37.5&lng=127.0")
+	rec := get(t, NewHandler(&fakeFinder{err: kakao.ErrUpstream}, ""), "/api/v1/nearby?lat=37.5&lng=127.0")
 	if rec.Code != http.StatusBadGateway {
 		t.Errorf("응답 코드가 %d다. 502여야 한다", rec.Code)
 	}
@@ -379,7 +395,7 @@ func TestNearbyNeverSendsSuccessWithABrokenBody(t *testing.T) {
 	finder := &fakeFinder{places: []kakao.Place{
 		{ID: "1", Name: "좌표깨짐", CategoryName: "음식점 > 분식", Distance: 10, Lat: math.NaN(), Lng: 127.0},
 	}}
-	rec := get(t, NewHandler(finder), "/api/v1/nearby?lat=37.5&lng=127.0")
+	rec := get(t, NewHandler(finder, ""), "/api/v1/nearby?lat=37.5&lng=127.0")
 
 	if rec.Code == http.StatusOK {
 		t.Errorf("응답을 만들지 못했는데 200을 보냈다 (본문: %q)", rec.Body.String())
@@ -397,7 +413,7 @@ func TestNearbyResponseIsValidJSON(t *testing.T) {
 	finder := &fakeFinder{places: []kakao.Place{
 		{ID: "1", Name: "정상", CategoryName: "음식점 > 분식", Distance: 10, Lat: 37.5, Lng: 127.0},
 	}}
-	rec := get(t, NewHandler(finder), "/api/v1/nearby?lat=37.5&lng=127.0")
+	rec := get(t, NewHandler(finder, ""), "/api/v1/nearby?lat=37.5&lng=127.0")
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("응답 코드가 %d다. 200이어야 한다", rec.Code)
@@ -416,7 +432,7 @@ func TestResponsesForbidCaching(t *testing.T) {
 		"/api/v1/nearby?lat=37.5&lng=127.0",
 		"/api/v1/nearby?lat=999&lng=127.0",
 	} {
-		rec := get(t, NewHandler(finder), target)
+		rec := get(t, NewHandler(finder, ""), target)
 		if got := rec.Header().Get("Cache-Control"); got != "no-store" {
 			t.Errorf("%s의 Cache-Control이 %q다. \"no-store\"여야 한다", target, got)
 		}
@@ -425,7 +441,7 @@ func TestResponsesForbidCaching(t *testing.T) {
 
 func TestNearbyMapsInvalidKey(t *testing.T) {
 	// 열쇠가 거부된 것은 재시도로 낫지 않으므로 일시 장애와 구분해야 한다.
-	rec := get(t, NewHandler(&fakeFinder{err: kakao.ErrInvalidKey}), "/api/v1/nearby?lat=37.5&lng=127.0")
+	rec := get(t, NewHandler(&fakeFinder{err: kakao.ErrInvalidKey}, ""), "/api/v1/nearby?lat=37.5&lng=127.0")
 	if rec.Code != http.StatusInternalServerError {
 		t.Errorf("응답 코드가 %d다. 500이어야 한다", rec.Code)
 	}
@@ -450,7 +466,7 @@ func TestNearbyAcceptsBoundaryValues(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			rec := get(t, NewHandler(&fakeFinder{}), tt.target)
+			rec := get(t, NewHandler(&fakeFinder{}, ""), tt.target)
 			if rec.Code != http.StatusOK {
 				t.Errorf("응답 코드가 %d다. 경계값은 받아들여 200이어야 한다 (본문: %s)",
 					rec.Code, rec.Body.String())
@@ -474,7 +490,7 @@ func TestNearbyRejectsJustOutsideBoundaries(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			rec := get(t, NewHandler(&fakeFinder{}), tt.target)
+			rec := get(t, NewHandler(&fakeFinder{}, ""), tt.target)
 			if rec.Code != http.StatusBadRequest {
 				t.Fatalf("응답 코드가 %d다. 400이어야 한다", rec.Code)
 			}
@@ -486,7 +502,7 @@ func TestNearbyRejectsJustOutsideBoundaries(t *testing.T) {
 }
 
 func TestHealthz(t *testing.T) {
-	rec := get(t, NewHandler(nil), "/healthz")
+	rec := get(t, NewHandler(nil, ""), "/healthz")
 	if rec.Code != http.StatusOK {
 		t.Errorf("응답 코드가 %d다. 200이어야 한다", rec.Code)
 	}
@@ -495,10 +511,10 @@ func TestHealthz(t *testing.T) {
 func TestReadyzReflectsWhetherLookupsCanWork(t *testing.T) {
 	// healthz는 프로세스가 살아 있는지만 답한다. 열쇠가 없어 조회가 100% 실패하는
 	// 서버도 healthz는 200이므로, 트래픽을 보내도 되는지는 readyz가 답한다.
-	if rec := get(t, NewHandler(nil), "/readyz"); rec.Code != http.StatusServiceUnavailable {
+	if rec := get(t, NewHandler(nil, ""), "/readyz"); rec.Code != http.StatusServiceUnavailable {
 		t.Errorf("열쇠가 없을 때 readyz가 %d다. 503이어야 한다", rec.Code)
 	}
-	if rec := get(t, NewHandler(&fakeFinder{}), "/readyz"); rec.Code != http.StatusOK {
+	if rec := get(t, NewHandler(&fakeFinder{}, ""), "/readyz"); rec.Code != http.StatusOK {
 		t.Errorf("열쇠가 있을 때 readyz가 %d다. 200이어야 한다", rec.Code)
 	}
 }
@@ -506,7 +522,7 @@ func TestReadyzReflectsWhetherLookupsCanWork(t *testing.T) {
 func TestStatusEndpointsForbidCaching(t *testing.T) {
 	// 상태 확인이 캐시되면 이미 죽은 서버가 계속 살아 있다고 답하는 셈이 된다.
 	for _, target := range []string{"/healthz", "/readyz"} {
-		rec := get(t, NewHandler(&fakeFinder{}), target)
+		rec := get(t, NewHandler(&fakeFinder{}, ""), target)
 		if got := rec.Header().Get("Cache-Control"); got != "no-store" {
 			t.Errorf("%s의 Cache-Control이 %q다. \"no-store\"여야 한다", target, got)
 		}
@@ -521,7 +537,7 @@ func TestNearbyMapsItsOwnTimeLimit(t *testing.T) {
 	// 502(상대가 잘못됨)가 아니라 504(우리가 기다리기를 그만둠)여야 하고,
 	// 화면도 "지금 서버가 붐빈다"는 다른 문구를 보여 준다.
 	finder := &fakeFinder{err: fmt.Errorf("%w: %w", kakao.ErrUpstream, context.DeadlineExceeded)}
-	rec := get(t, NewHandler(finder), "/api/v1/nearby?lat=37.5&lng=127.0")
+	rec := get(t, NewHandler(finder, ""), "/api/v1/nearby?lat=37.5&lng=127.0")
 	if rec.Code != http.StatusGatewayTimeout {
 		t.Errorf("응답 코드가 %d다. 504여야 한다", rec.Code)
 	}
@@ -539,9 +555,101 @@ func TestNearbyStaysQuietWhenTheClientHangsUp(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/nearby?lat=37.5&lng=127.0", nil).WithContext(ctx)
 	rec := httptest.NewRecorder()
 	finder := &fakeFinder{err: fmt.Errorf("%w: %w", kakao.ErrUpstream, context.Canceled)}
-	NewHandler(finder).ServeHTTP(rec, req)
+	NewHandler(finder, "").ServeHTTP(rec, req)
 
 	if rec.Body.Len() != 0 {
 		t.Errorf("끊긴 연결에 본문을 썼다: %s", rec.Body.String())
+	}
+}
+
+// 비밀값이 설정된 서버는 그 값을 가진 요청만 조회에 들여보낸다.
+//
+// 부른 횟수(calls)를 함께 보는 것이 이 시험의 핵심이다. 막기만 하고 카카오를 부른 뒤에
+// 401을 돌려주면 응답은 거절이어도 하루 호출 한도는 그대로 깎인다. 이 검사가 지키려는
+// 것이 바로 그 한도라, 상태 코드만 보는 시험은 아무것도 지키지 못한다.
+func TestNearbyGuardsLookupsWithInternalKey(t *testing.T) {
+	const key = "k3y-abc123"
+	tests := []struct {
+		name      string
+		headers   map[string]string
+		wantCode  int
+		wantError string
+		wantCalls int
+	}{
+		{
+			name:      "맞는 비밀값이면 조회한다",
+			headers:   map[string]string{internalKeyHeader: key},
+			wantCode:  http.StatusOK,
+			wantCalls: 1,
+		},
+		{
+			name:      "헤더가 아예 없으면 카카오를 부르지 않고 막는다",
+			headers:   nil,
+			wantCode:  http.StatusUnauthorized,
+			wantError: "unauthorized",
+			wantCalls: 0,
+		},
+		{
+			name:      "비밀값이 틀리면 카카오를 부르지 않고 막는다",
+			headers:   map[string]string{internalKeyHeader: "wrong-k3y"},
+			wantCode:  http.StatusUnauthorized,
+			wantError: "unauthorized",
+			wantCalls: 0,
+		},
+		{
+			// 화면 쪽이 비밀값을 빈 문자열로 읽어 그대로 보내는 상황이다.
+			// 빈 값을 통과시키면 검사가 있으나 마나가 된다.
+			name:      "헤더가 비어 있으면 카카오를 부르지 않고 막는다",
+			headers:   map[string]string{internalKeyHeader: ""},
+			wantCode:  http.StatusUnauthorized,
+			wantError: "unauthorized",
+			wantCalls: 0,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			finder := &fakeFinder{}
+			rec := getWithHeaders(t, NewHandler(finder, key),
+				"/api/v1/nearby?lat=37.5&lng=127.0", tt.headers)
+
+			if rec.Code != tt.wantCode {
+				t.Errorf("응답 코드가 %d다. %d여야 한다 (본문: %s)",
+					rec.Code, tt.wantCode, rec.Body.String())
+			}
+			if tt.wantError != "" {
+				if got := decodeError(t, rec)["error"]; got != tt.wantError {
+					t.Errorf("오류 코드가 %q다. %q여야 한다", got, tt.wantError)
+				}
+			}
+			if finder.calls != tt.wantCalls {
+				t.Errorf("카카오 조회기를 %d번 불렀다. %d번이어야 한다",
+					finder.calls, tt.wantCalls)
+			}
+		})
+	}
+}
+
+func TestNearbyNeedsNoKeyWhenServerHasNone(t *testing.T) {
+	// 로컬 개발과 시험이 도는 경로다. 비밀값 없이 켠 서버가 헤더를 요구하면
+	// just dev가 그대로 깨진다.
+	finder := &fakeFinder{}
+	rec := get(t, NewHandler(finder, ""), "/api/v1/nearby?lat=37.5&lng=127.0")
+	if rec.Code != http.StatusOK {
+		t.Errorf("응답 코드가 %d다. 200이어야 한다 (본문: %s)", rec.Code, rec.Body.String())
+	}
+	if finder.calls != 1 {
+		t.Errorf("카카오 조회기를 %d번 불렀다. 1번이어야 한다", finder.calls)
+	}
+}
+
+func TestStatusEndpointsStayOpenWhenInternalKeyIsSet(t *testing.T) {
+	// Vercel과 감시 도구는 비밀값을 모른 채 이 둘에 닿는다. 여기까지 막으면
+	// 서버가 살아 있는지 확인할 방법이 사라진다. 둘 다 카카오를 부르지 않아
+	// 열어 두어도 호출 한도를 쓰지 않는다.
+	for _, target := range []string{"/healthz", "/readyz"} {
+		rec := get(t, NewHandler(&fakeFinder{}, "k3y-abc123"), target)
+		if rec.Code != http.StatusOK {
+			t.Errorf("%s의 응답 코드가 %d다. 헤더 없이도 200이어야 한다", target, rec.Code)
+		}
 	}
 }

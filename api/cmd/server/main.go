@@ -1,5 +1,6 @@
 // 서버를 켜는 진입점이다.
-// 카카오 열쇠는 환경변수 KAKAO_REST_API_KEY로만 읽는다.
+// 카카오 열쇠는 환경변수 KAKAO_REST_API_KEY로, 화면 서버와 나눠 갖는 비밀값은
+// INTERNAL_API_KEY로만 읽는다.
 package main
 
 import (
@@ -44,8 +45,16 @@ func main() {
 		slog.Warn("KAKAO_REST_API_KEY가 없습니다. 조회 요청은 not_configured로 응답합니다")
 	}
 
+	// 이 비밀값이 없으면 조회 경로가 인터넷에 그대로 열린다. 조회 한 번이 카카오를
+	// 최대 열다섯 번 부르므로, 스크립트 하나가 몇 분 만에 하루 한도를 소진시킬 수 있다.
+	// 로컬 개발과 시험은 이 값 없이 도는 것이 정상이라 서버를 막지는 않고 경고만 남긴다.
+	internalKey := os.Getenv("INTERNAL_API_KEY")
+	if internalKey == "" {
+		slog.Warn("INTERNAL_API_KEY가 없습니다. 조회 요청을 누구나 부를 수 있습니다")
+	}
+
 	server := &http.Server{
-		Handler:           httpapi.NewHandler(finder),
+		Handler:           httpapi.NewHandler(finder, internalKey),
 		ReadHeaderTimeout: 5 * time.Second,
 		// 응답을 천천히 읽는(또는 읽지 않는) 상대가 연결과 고루틴을 무기한 붙잡지 못하게 한다.
 		WriteTimeout: writeTimeout,

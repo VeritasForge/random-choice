@@ -4,6 +4,8 @@ package httpapi
 
 import (
 	"context"
+	"crypto/sha256"
+	"crypto/subtle"
 	"encoding/json"
 	"errors"
 	"log/slog"
@@ -21,6 +23,10 @@ const (
 	minRadius     = 100
 	maxRadius     = 20000
 )
+
+// internalKeyHeader는 화면 서버가 자기 요청임을 밝히는 헤더 이름이다.
+// 중계가 브라우저가 아니라 화면 서버에서 일어나므로, 이 헤더는 개발자 도구에 나타나지 않는다.
+const internalKeyHeader = "X-Internal-Key"
 
 // internalErrorBody는 응답을 만들지 못했을 때 보낼 마지막 수단이다.
 // 미리 만들어 둔 문자열이라 이것을 보내다가 다시 실패할 일이 없다.
@@ -63,11 +69,24 @@ type errorResponse struct {
 // NewHandler는 서비스가 제공하는 모든 경로를 담은 처리기를 만든다.
 // finder가 nil이면 카카오 열쇠가 설정되지 않은 상태로 보고 not_configured로 답한다.
 // 열쇠가 없다고 서버가 아예 뜨지 않으면 무엇이 잘못됐는지 알기 어렵기 때문이다.
-func NewHandler(finder PlaceFinder) http.Handler {
+//
+// internalKey는 화면 서버와 나눠 갖는 비밀값이다. 조회 경로만 이 값으로 막는다.
+// 빈 문자열이면 검사하지 않는다 — 그 경우 누구나 부를 수 있다는 사실은 서버를 켜는
+// 자리(cmd/server/main.go)가 경고로 알린다.
+func NewHandler(finder PlaceFinder, internalKey string) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/v1/nearby", func(w http.ResponseWriter, r *http.Request) {
+		// 카카오를 부르기 전에 막는다. 부른 다음에 401을 돌려주면 응답은 거절이어도
+		// 하루 호출 한도는 그대로 깎인다 — 이 검사가 지키려는 것이 바로 그 한도다.
+		if !authorized(r, internalKey) {
+			writeError(w, http.StatusUnauthorized, "unauthorized",
+				"허가되지 않은 요청입니다.")
+			return
+		}
 		handleNearby(w, r, finder)
 	})
+	// 상태 확인 두 경로는 막지 않는다. Vercel과 감시 도구가 비밀값 없이 닿아야 하고,
+	// 둘 다 카카오를 부르지 않아 호출 한도를 쓰지 않는다.
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
 		writeOK(w)
 	})
@@ -84,6 +103,27 @@ func NewHandler(finder PlaceFinder) http.Handler {
 		writeOK(w)
 	})
 	return mux
+}
+
+// authorized는 요청이 우리 화면 서버에서 온 것인지 본다.
+//
+// 두 값을 SHA-256으로 줄인 뒤 비교하는 이유: subtle.ConstantTimeCompare는 내용에 대해서는
+// 일정한 시간이 걸리지만 "길이가 다르면 즉시 0을 돌려준다"고 표준 라이브러리 주석이
+// 밝히고 있다. 그대로 쓰면 비밀값의 길이가 응답 시간에 드러난다.
+// 해시는 언제나 32바이트라, 줄여 놓고 비교하면 비교 시간이 입력 길이와 무관해진다.
+//
+// 이 성질은 시험이 지켜 주지 못한다. ==로 바꿔도 무엇을 통과시키고 무엇을 막는지는
+// 똑같아서 동작 시험은 전부 통과한다. 시간을 재 봤다 — 비교 함수만 5백만 번 돌려야
+// 겨우 1ns 차이가 보이고(첫 글자부터 틀린 값 대 마지막 글자만 틀린 값), 요청 한 건
+// 단위로는 그 차이가 0으로 묻힌다. 그래서 이 주석이 유일한 방어다.
+// 바꾸려는 사람은 위 이유를 먼저 읽어야 한다.
+func authorized(r *http.Request, internalKey string) bool {
+	if internalKey == "" {
+		return true
+	}
+	got := sha256.Sum256([]byte(r.Header.Get(internalKeyHeader)))
+	want := sha256.Sum256([]byte(internalKey))
+	return subtle.ConstantTimeCompare(got[:], want[:]) == 1
 }
 
 func handleNearby(w http.ResponseWriter, r *http.Request, finder PlaceFinder) {
