@@ -51,7 +51,7 @@ export default function VisitsScreen({
         >
           <span className="flex min-w-0 flex-col gap-0.5">
             <span className="font-semibold">최근에 정한 곳은 빼고 추천하기</span>
-            <span className="text-sm font-normal text-muted">
+            <span className="text-base font-normal text-muted">
               아래 목록에 있는 가게를 결과에서 뺍니다
             </span>
           </span>
@@ -79,7 +79,7 @@ export default function VisitsScreen({
                 >
                   <span className="flex min-w-0 flex-col gap-0.5">
                     <span className="truncate text-lg font-semibold">{visit.placeName}</span>
-                    <time dateTime={visit.at} className="text-sm text-muted">
+                    <time dateTime={visit.at} className="text-base text-muted">
                       {DATE_FORMAT.format(new Date(visit.at))}
                     </time>
                   </span>
@@ -99,7 +99,7 @@ export default function VisitsScreen({
               ))}
             </ul>
 
-            <p className="text-sm text-muted">
+            <p className="text-base text-muted">
               {RETENTION_DAYS}일이 지난 기록은 저절로 사라져요
             </p>
           </>
@@ -107,8 +107,14 @@ export default function VisitsScreen({
       </div>
 
       <div className="flex w-full flex-col gap-3">
+        {/*
+          "전체 지우기"만 다른 옷을 입힌다(btn-danger-quiet). 바로 아래 "돌아가기"와
+          12px 간격으로 붙어 있는데, 하나는 최대 2주치 기록을 한 번에 없애고 복구가 없고
+          다른 하나는 그냥 이전 화면으로 간다. 걸으면서 한 손으로 누르는 화면이라
+          같은 옷을 입혀 두면 안 된다. 색과 명암비는 app/globals.css에 적어 두었다.
+        */}
         {visits.length > 0 ? (
-          <button type="button" onClick={onForgetAll} className="btn btn-quiet w-full">
+          <button type="button" onClick={onForgetAll} className="btn btn-danger-quiet w-full">
             전체 지우기
           </button>
         ) : null}

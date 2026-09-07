@@ -52,10 +52,23 @@ const ROW_CLASS =
  *
  * 거리와 주소를 한 줄에 붙인 이유: 따로 두면 줄이 세 줄이 되어 네 곳을 보여 주는 데
  * 휴대폰 한 화면을 다 쓴다. 거리를 앞에 두는 것은 점심에 먼저 보는 값이 그것이라서다.
+ *
+ * **곁글(거리·주소)도 16px이다.** 한때 14px로 내려 두고 "16px면 결과 네 줄이 한 화면에
+ * 안 들어간다"고 적었는데, 2026-09-07에 390×844 브라우저로 직접 재 보니 사실이 아니었다.
+ * 잰 값(줄 높이는 링크 있는 줄 80px, 링크 없는 줄 128px):
+ *
+ * - 보통 결과 화면(안내 상자 없음): 필요 644px / 844px — 여유 200px, 스크롤 없음
+ * - 가장 빡빡한 조합(두 줄짜리 안내 상자 + "다른 가게 보기" + 링크 없는 줄 하나):
+ *   필요 858px — 14px 넘쳐 그만큼 스크롤이 생긴다(같은 조합이 14px일 때는 808px였다)
+ *
+ * 그 한 조합 때문에 화면 전체를 14px로 내리지는 않았다. 설계가 정한 글자 하한이 16px이고
+ * (서서 보는 화면이다), 바깥 상자가 쓰는 min-h-dvh는 주소 표시줄을 뺀 높이라 실제
+ * 기기에서 쓸 수 있는 높이는 844px보다 낮다 — 14px로 내려도 808px이 들어간다는 보장이 없다.
  */
 function PlaceRow({ place }: { place: Place }) {
   // 주소가 비어 올 수 있다. 그대로 이으면 "240m · 도보 4분 · "처럼 꼬리가 남는다.
   const meta = [distanceLabel(place.distance), place.roadAddress].filter(Boolean).join(" · ");
+  const hasLink = Boolean(place.placeUrl);
 
   return (
     <span className="flex min-w-0 flex-col gap-0.5">
@@ -66,7 +79,7 @@ function PlaceRow({ place }: { place: Place }) {
         열릴 뿐이라 사용자에게는 고장으로 보인다. 주소가 없으면 링크가 아니라
         그냥 글자로 그린다.
       */}
-      {place.placeUrl ? (
+      {hasLink ? (
         <a
           href={place.placeUrl}
           target="_blank"
@@ -78,8 +91,25 @@ function PlaceRow({ place }: { place: Place }) {
       ) : (
         <span className="truncate text-lg font-semibold">{place.name}</span>
       )}
-      {/* tabular-nums: 24m·49m·80m처럼 숫자가 세로로 늘어서므로 자리폭을 고정해 눈금처럼 읽히게 한다. */}
-      <span className="truncate text-sm text-muted tabular-nums">{meta}</span>
+      {/*
+        tabular-nums: 24m·49m·80m처럼 숫자가 세로로 늘어서므로 자리폭을 고정해 눈금처럼 읽히게 한다.
+
+        링크가 없을 때만 truncate를 걷어내는 이유: 거리와 주소를 한 줄로 이어 붙이면
+        주소는 사실상 언제나 잘린다. 링크가 있는 줄은 잘려도 카카오 페이지에서 정확한
+        주소를 다시 볼 수 있지만, 카카오가 place_url을 비워 보내는 줄에는 되찾을 길이
+        아예 없다 — 화면에 남은 잘린 글자가 전부다. 걸으면서 가게를 찾는 사람에게
+        주소는 유일한 길 정보라, 그 줄만 접혀서라도 다 보이게 한다.
+        링크 없는 줄이 한 줄 더 커지는 것은 받아들인다.
+      */}
+      <span
+        className={
+          hasLink
+            ? "truncate text-base text-muted tabular-nums"
+            : "text-base text-muted tabular-nums"
+        }
+      >
+        {meta}
+      </span>
     </span>
   );
 }
@@ -112,7 +142,7 @@ function DecideControl({
       <span
         ref={markRef}
         tabIndex={-1}
-        className="row-action shrink-0 text-sm font-semibold text-muted"
+        className="row-action shrink-0 text-base font-semibold text-muted"
       >
         정하신 곳
       </span>
@@ -184,10 +214,16 @@ export default function ResultScreen({
           껐을 때는 침묵하면, 사용자가 자기가 만든 상태를 모르는 채로 남는다.
           둘 다 아니면(회피가 켜져 있고 뺀 것도 없으면) 줄 자체를 그리지 않는다.
           기록이 빈 사람에게는 이 화면이 예전 그대로여야 한다.
+
+          바탕색(bg-surface)만으로는 이 상자가 화면 바탕과 밝은 화면 1.11:1,
+          어두운 화면 1.12:1로만 구분된다. 경계선 색을 #e5e1db에서 올린 근거가
+          "햇빛 아래에서 안 보인다"였는데, 같은 잣대를 대면 테두리 없는 이 상자야말로
+          밖에서 경계가 사라진다. 그래서 border-line을 준다 —
+          밝은 화면 3.44:1, 어두운 화면 3.48:1이라 WCAG 1.4.11의 3:1을 넘는다.
         */}
         {banner !== null ? (
-          <div className="flex w-full flex-col items-center gap-2 rounded-xl bg-surface p-3 text-center">
-            <p className="text-sm leading-relaxed text-muted">{banner.text}</p>
+          <div className="flex w-full flex-col items-center gap-2 rounded-xl border border-line bg-surface p-3 text-center">
+            <p className="text-base leading-relaxed text-muted">{banner.text}</p>
             {banner.actionLabel !== null ? (
               <button
                 type="button"
@@ -211,7 +247,7 @@ export default function ResultScreen({
             {cuisine}
           </h2>
           {total <= FEW ? (
-            <p className="text-sm text-muted">가까운 곳 중에서는 {total}곳을 찾았어요</p>
+            <p className="text-base text-muted">가까운 곳 중에서는 {total}곳을 찾았어요</p>
           ) : null}
         </div>
 

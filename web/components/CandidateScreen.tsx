@@ -37,7 +37,7 @@ export default function CandidateScreen({
                 곳 수를 함께 적는 이유: 한 곳뿐인 종류를 고르면 "다른 가게 보기"가
                 아예 붙지 않는데, 그 사정을 미리 알리지 않으면 고른 뒤에야 알게 된다.
               */}
-              <span className="text-sm font-normal text-muted">
+              <span className="text-base font-normal text-muted">
                 {countLabel(cuisine.count)}
               </span>
             </button>
