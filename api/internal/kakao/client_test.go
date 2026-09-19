@@ -826,7 +826,7 @@ func writeJSON(t *testing.T, w http.ResponseWriter, body string) {
 	}
 }
 
-// 다섯 지점을 조회하면 각 지점의 결과가 합쳐져야 한다.
+// 여러 지점(중심 1 + 링 40)을 조회하면 각 지점의 결과가 합쳐져야 한다.
 func TestSearchAroundMergesAllPoints(t *testing.T) {
 	var mu sync.Mutex
 	seenPoints := map[string]bool{}
@@ -925,7 +925,7 @@ func TestSearchAroundRecomputesDistanceFromUserPosition(t *testing.T) {
 }
 
 // SearchAround는 합친 결과를 거리 오름차순으로 돌려준다고 문서 주석에서 약속한다.
-// 그 약속을 지우면(sort.Slice 한 줄) 다섯 지점을 병합한 순서가 그대로 나간다.
+// 그 약속을 지우면(sort.Slice 한 줄) 여러 지점을 병합한 순서가 그대로 나간다.
 //
 // 가짜 응답을 **일부러 먼 것부터** 담는 것이 이 시험의 핵심이다. 이미 거리순인
 // 자료를 넣으면 정렬을 지워도 결과가 우연히 같아 아무것도 지키지 못한다
@@ -1107,7 +1107,7 @@ func TestSearchAroundCallsCenterBeforePerimeter(t *testing.T) {
 // 이 시험은 시계를 본다. 느리다고 지우지 마라 — 이 문제를 잡을 수 있는 시험이
 // 지금 이것뿐이다.
 //
-// 무엇을 지키는가: 다섯 지점 전체가 시간 예산 "하나"를 나눠 써야 한다.
+// 무엇을 지키는가: 중심과 모든 링 지점이 시간 예산 "하나"를 나눠 써야 한다.
 // SearchRestaurants는 불릴 때마다 자기 몫의 상한을 새로 여는데, SearchAround가
 // 중심을 기다린 뒤에 둘레를 시작하므로 위에서 전체 예산을 잡아 두지 않으면
 // 두 구간의 상한이 그대로 더해진다. 실제 값으로는 12초짜리가 최악 24초가 되고,
@@ -1314,5 +1314,41 @@ func TestRingPointsAppliesRotation(t *testing.T) {
 	if pts[0].lat != wantLat || pts[0].lng != wantLng {
 		t.Errorf("회전이 반영되지 않았다. got (%v,%v), want (%v,%v)",
 			pts[0].lat, pts[0].lng, wantLat, wantLng)
+	}
+}
+
+// 동시에 뜨는 링 조회가 maxConcurrentRingQueries를 넘지 않는지 확인한다.
+// 넘으면 사용자 한 명의 요청 하나가 카카오에 너무 많은 동시 연결을 낸다.
+func TestSearchAroundLimitsConcurrentRingQueries(t *testing.T) {
+	const userLat, userLng = 37.4979, 127.0276
+	var current, peak int32
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if isCenterRequest(r, userLat, userLng) {
+			writeJSON(t, w, `{"documents":[],"meta":{"is_end":true}}`)
+			return
+		}
+		n := atomic.AddInt32(&current, 1)
+		for {
+			p := atomic.LoadInt32(&peak)
+			if n <= p || atomic.CompareAndSwapInt32(&peak, p, n) {
+				break
+			}
+		}
+		// 동시성 창을 실제로 벌려 겹치게 만든다. 짧게 두면 고루틴이
+		// 순식간에 끝나 세마포어가 있어도 우연히 안 겹칠 수 있다.
+		time.Sleep(20 * time.Millisecond)
+		atomic.AddInt32(&current, -1)
+		writeJSON(t, w, `{"documents":[],"meta":{"is_end":true}}`)
+	}))
+	defer server.Close()
+
+	client := NewClientWithBaseURL("key", server.URL, server.Client())
+	if _, err := client.SearchAround(context.Background(), userLat, userLng, 500); err != nil {
+		t.Fatalf("SearchAround = %v", err)
+	}
+	if peak > maxConcurrentRingQueries {
+		t.Errorf("동시 요청이 최대 %d개까지 올라갔다. 상한 %d를 넘으면 안 된다",
+			peak, maxConcurrentRingQueries)
 	}
 }

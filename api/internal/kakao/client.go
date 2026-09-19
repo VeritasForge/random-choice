@@ -18,6 +18,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/VeritasForge/random-choice/api/internal/geo"
@@ -92,9 +93,18 @@ type Client struct {
 // NewClient는 실제 카카오를 가리키는 조회기를 만든다.
 func NewClient(apiKey string) *Client {
 	return &Client{
-		apiKey:        apiKey,
-		baseURL:       defaultBaseURL,
-		http:          &http.Client{Timeout: requestTimeout},
+		apiKey:  apiKey,
+		baseURL: defaultBaseURL,
+		http: &http.Client{
+			Timeout: requestTimeout,
+			// 동시 조회 상한(maxConcurrentRingQueries)만큼 유휴 연결을
+			// 남겨 둔다. 기본값(2)으로 두면 그 이상 동시에 쏘는 요청마다
+			// 페이지가 끝날 때 연결이 닫혀, 다음 페이지에서 TLS 악수를
+			// 또 해야 한다.
+			Transport: &http.Transport{
+				MaxIdleConnsPerHost: maxConcurrentRingQueries,
+			},
+		},
 		searchTimeout: DefaultSearchTimeout,
 		randFloat:     rand.Float64,
 	}
@@ -154,6 +164,13 @@ const (
 	rotationSteps    = 5
 	rotationStepDeg  = 18.0
 	rotationRangeDeg = 90.0
+
+	// maxConcurrentRingQueries는 링 지점 조회를 동시에 몇 개까지 보낼지다.
+	// 상한 없이 마흔 개를 한꺼번에 쏘면 사용자 한 명의 요청 하나가 카카오에
+	// 동시 연결 마흔 개를 내고, 429가 순간 호출 제한이라면 그중 몇 개가
+	// 서로를 밀어낼 수 있다(2026-09-20 최종 리뷰에서 지적됨). 예전 다섯 지점
+	// 방식의 동시성(둘레 4개)보다는 넉넉하되 마흔보다는 훨씬 작은 값으로 둔다.
+	maxConcurrentRingQueries = 8
 )
 
 // point는 조회할 좌표 하나다.
@@ -233,22 +250,33 @@ func (c *Client) SearchAround(ctx context.Context, lat, lng float64, radius int)
 	// 링 점들은 보강이다. 하나가 실패해도 그 지점만 버리고 계속한다 —
 	// 각 지점이 독립적으로 완전하거나 통째로 없으므로, 하나가 빠져도
 	// 남은 것들의 분포는 온전하다.
+	//
+	// sem이 동시 실행 개수를 maxConcurrentRingQueries로 묶는다. 실패는
+	// 지점마다 따로 로그를 남기지 않고 개수만 세어 마지막에 한 번만
+	// 남긴다 — 카카오가 흔들리는 날 로그 한 줄에 40줄이 쌓이는 것을 막는다.
 	results := make([][]Place, len(points))
 	var wg sync.WaitGroup
+	var failures int32
+	sem := make(chan struct{}, maxConcurrentRingQueries)
 	for i, p := range points {
 		wg.Add(1)
 		go func(i int, p point) {
 			defer wg.Done()
+			sem <- struct{}{}
+			defer func() { <-sem }()
 			found, err := c.SearchRestaurants(ctx, p.lat, p.lng, radius)
 			if err != nil {
-				slog.Warn("링 지점 조회에 실패해 그 지점을 건너뜁니다",
-					"error", err.Error())
+				atomic.AddInt32(&failures, 1)
 				return
 			}
 			results[i] = found
 		}(i, p)
 	}
 	wg.Wait()
+	if failures > 0 {
+		slog.Warn("일부 링 지점 조회에 실패해 건너뛰었습니다",
+			"실패한 지점 수", failures, "전체 링 지점 수", len(points))
+	}
 
 	merged := make([]Place, 0, len(center)+len(points)*pageSize*maxPages)
 	seen := make(map[string]struct{}, cap(merged))

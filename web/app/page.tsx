@@ -19,7 +19,7 @@ import { errorNotice } from "@/lib/errors";
 import { getCurrentPosition, GeoError } from "@/lib/geo";
 import { pickAvoiding, pickDistinct, pickOne } from "@/lib/pick";
 import { pickPlaces, WINDOW_STEP } from "@/lib/places";
-import { DEFAULT_RADIUS } from "@/lib/radius";
+import { DEFAULT_RADIUS, WIDER_RADIUS } from "@/lib/radius";
 import { avoidNotice, canRestore } from "@/lib/reasons";
 import {
   browserStore,
@@ -138,12 +138,12 @@ export default function Home() {
     mainRef.current?.focus();
   }, [screenName]);
 
-  async function start() {
+  async function start(radius: number = DEFAULT_RADIUS) {
     setView({ kind: "loading" });
 
     try {
       const coords = await getCurrentPosition();
-      const result = await fetchNearby(coords.lat, coords.lng, DEFAULT_RADIUS);
+      const result = await fetchNearby(coords.lat, coords.lng, radius);
       const cuisines = distinctById(result.cuisines);
       if (cuisines.length === 0) {
         setView({ kind: "empty" });
@@ -361,8 +361,8 @@ export default function Home() {
       {view.kind === "empty" && (
         <Notice
           title="주변에서 음식점을 찾지 못했어요"
-          description="다시 찾아볼까요?"
-          actions={[{ label: "다시 찾아보기", onClick: () => start() }]}
+          description="범위를 넓혀서 다시 찾아볼까요?"
+          actions={[{ label: "다시 찾아보기", onClick: () => start(WIDER_RADIUS) }]}
         />
       )}
 
