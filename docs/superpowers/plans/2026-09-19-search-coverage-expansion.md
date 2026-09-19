@@ -788,20 +788,23 @@ Expected: 종료 코드 0(서버 시험·검사, 화면 빌드·시험·타입·
 
 - [ ] **Step 2: 실제 카카오 응답으로 커버리지를 재본다(수동 확인)**
 
-로컬에서 `KAKAO_REST_API_KEY`가 설정된 채로 서버를 띄운다
-(`just dev` 또는 `cd api && go run ./cmd/server`). 로컬 개발에서는
+`just api`로 API 서버만 띄운다(`Justfile`에 이미 있는 레시피 — `api/.env`의
+`KAKAO_REST_API_KEY`를 자동으로 읽고, 포트 8090에서 뜬다). 로컬 개발에서는
 보통 `INTERNAL_API_KEY`를 설정하지 않으므로(README "비밀값" 절 참고),
 그 경우 헤더 없이 강남역 좌표로 바로 조회한다:
 
 ```bash
-curl -s "http://localhost:8080/api/v1/nearby?lat=37.4979&lng=127.0276&radius=500" | python3 -c "
+just api &
+sleep 2
+curl -s "http://localhost:8090/api/v1/nearby?lat=37.4979&lng=127.0276&radius=500" | python3 -c "
 import json,sys
 d = json.load(sys.stdin)
 print('받은 가게 수:', len(d['places']))
 "
+kill %1
 ```
 
-로컬에 `INTERNAL_API_KEY`를 설정해 두었다면 위 명령에
+로컬에 `INTERNAL_API_KEY`를 설정해 두었다면 위 curl 명령에
 `-H "X-Internal-Key: $INTERNAL_API_KEY"`를 추가한다(헤더 이름은
 `api/internal/httpapi/handler.go`의 `internalKeyHeader` 상수 값이다).
 
