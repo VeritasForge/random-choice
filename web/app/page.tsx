@@ -19,7 +19,7 @@ import { errorNotice } from "@/lib/errors";
 import { getCurrentPosition, GeoError } from "@/lib/geo";
 import { pickAvoiding, pickDistinct, pickOne } from "@/lib/pick";
 import { pickPlaces, WINDOW_STEP } from "@/lib/places";
-import { DEFAULT_RADIUS, widerThan } from "@/lib/radius";
+import { DEFAULT_RADIUS } from "@/lib/radius";
 import { avoidNotice, canRestore } from "@/lib/reasons";
 import {
   browserStore,
@@ -43,10 +43,6 @@ const PLACE_COUNT = 4;
  * 결과와 후보를 이 값 안에 함께 담아 두어, 화면 상태와 데이터가 어긋나지 않게 한다.
  * 여기 담긴 목록은 새로고침하면 사라진다. 어디에도 저장하지 않는다 —
  * 카카오가 결과 저장을 금지하기 때문이다.
- *
- * empty와 error가 radius를 함께 들고 다니는 이유: 다음 행동이 그 값에 달려 있다.
- * empty는 "방금 실패한 반경보다 넓은 것"만 제안해야 하고,
- * error의 다시 시도는 사용자가 넓혀 둔 반경을 그대로 이어받아야 한다.
  */
 type View =
   | { kind: "start" }
@@ -54,12 +50,12 @@ type View =
   | { kind: "candidates"; result: NearbyResult; candidates: Cuisine[] }
   | {
       kind: "result";
-      cuisine: Cuisine;
       /**
        * 고른 종류의 가게 **전부**. 회피를 적용하기 **전**의 목록이다.
        * 회피를 껐을 때 빠졌던 가게를 되돌리려면 이것이 있어야 한다 —
        * 걸러진 pool만 들고 있으면 스위치를 꺼도 가게가 돌아오지 않는다.
        */
+      cuisine: Cuisine;
       all: Place[];
       /**
        * 회피를 적용한 뒤 남은 가게. 뽑기의 바탕이다.
@@ -78,8 +74,8 @@ type View =
       released: boolean;
     }
   | { kind: "visits" }
-  | { kind: "empty"; radius: number }
-  | { kind: "error"; code: string; message: string; radius: number };
+  | { kind: "empty" }
+  | { kind: "error"; code: string; message: string };
 
 /**
  * 화면 단위 이름. start와 loading은 같은 화면의 두 상태이므로 하나로 본다 —
@@ -142,15 +138,15 @@ export default function Home() {
     mainRef.current?.focus();
   }, [screenName]);
 
-  async function start(radius: number) {
+  async function start() {
     setView({ kind: "loading" });
 
     try {
       const coords = await getCurrentPosition();
-      const result = await fetchNearby(coords.lat, coords.lng, radius);
+      const result = await fetchNearby(coords.lat, coords.lng, DEFAULT_RADIUS);
       const cuisines = distinctById(result.cuisines);
       if (cuisines.length === 0) {
-        setView({ kind: "empty", radius });
+        setView({ kind: "empty" });
         return;
       }
       setView({
@@ -166,15 +162,15 @@ export default function Home() {
         // 상태 코드를 콘솔에 남긴다. 남기지 않으면 "프록시가 목적지에 못 닿았다"와
         // "서버가 스스로 500을 냈다"의 구분이 던져진 다음 프레임에서 사라진다.
         console.error("[start] 조회 실패", error.code, error.status);
-        setView({ kind: "error", code: error.code, message: error.message, radius });
+        setView({ kind: "error", code: error.code, message: error.message });
         return;
       }
       if (error instanceof GeoError) {
-        setView({ kind: "error", code: error.code, message: "", radius });
+        setView({ kind: "error", code: error.code, message: "" });
         return;
       }
       console.error("[start] 예상하지 못한 오류", error);
-      setView({ kind: "error", code: "unexpected", message: "", radius });
+      setView({ kind: "error", code: "unexpected", message: "" });
     }
   }
 
@@ -292,9 +288,6 @@ export default function Home() {
     setUndoable([]);
   }
 
-  // 이미 실패한 반경 이하는 제안하지 않는다(까닭은 lib/radius.ts에 적어 두었다).
-  const widerRadii = view.kind === "empty" ? widerThan(view.radius) : [];
-
   const notice = view.kind === "error" ? errorNotice(view.code, view.message) : null;
 
   return (
@@ -311,7 +304,7 @@ export default function Home() {
     >
       {(view.kind === "start" || view.kind === "loading") && (
         <StartScreen
-          onStart={() => start(DEFAULT_RADIUS)}
+          onStart={() => start()}
           loading={view.kind === "loading"}
           onShowVisits={() => setView({ kind: "visits" })}
         />
@@ -367,22 +360,9 @@ export default function Home() {
 
       {view.kind === "empty" && (
         <Notice
-          // 반경을 문구에 넣지 않는다. 조회기가 한 점이 아니라 다섯 점을 보게 되면서
-          // 실제로 살펴본 범위가 요청 반경과 달라져, "반경 500m 안에 없어요"가 사실이 아니다.
           title="주변에서 음식점을 찾지 못했어요"
-          description={
-            widerRadii.length > 0
-              ? "조금 더 넓게 찾아볼까요?"
-              : "더 넓혀 봐도 찾지 못했어요. 다른 곳에서 다시 시도해 주세요."
-          }
-          actions={
-            widerRadii.length > 0
-              ? widerRadii.map((radius) => ({
-                  label: `${radius / 1000}km로 넓히기`,
-                  onClick: () => start(radius),
-                }))
-              : [{ label: "처음부터 다시", onClick: () => setView({ kind: "start" }) }]
-          }
+          description="다시 찾아볼까요?"
+          actions={[{ label: "다시 찾아보기", onClick: () => start() }]}
         />
       )}
 
@@ -397,7 +377,7 @@ export default function Home() {
           // 내일 다시)을 이미 담고 있다.
           actions={
             notice.retryable
-              ? [{ label: "다시 시도", onClick: () => start(view.radius) }]
+              ? [{ label: "다시 시도", onClick: () => start() }]
               : []
           }
         />

@@ -24,7 +24,6 @@ export default function Notice({ title, description, actions }: Props) {
             /*
               맨 앞의 것만 강조색으로 칠한다. 막다른 화면에서 다음 걸음이 무엇인지
               한눈에 보여야 하고, 강조색이 둘 이상이면 그 구실을 못 한다.
-              반경을 넓히는 화면에서는 가장 좁은(=가장 먼저 해 볼) 반경이 맨 앞이다.
             */
             className={`btn w-full ${index === 0 ? "btn-primary" : "btn-quiet"}`}
           >
