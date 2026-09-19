@@ -11,6 +11,7 @@ import (
 	"io"
 	"log/slog"
 	"math"
+	"math/rand/v2"
 	"net/http"
 	"net/url"
 	"sort"
@@ -82,6 +83,10 @@ type Client struct {
 	// searchTimeout은 한 조회 전체의 상한이다. 시험에서 짧게 바꿔 쓸 수 있도록
 	// 상수가 아니라 필드로 둔다 — 상수면 상한이 실제로 도는지 확인할 방법이 없다.
 	searchTimeout time.Duration
+	// randFloat는 [0,1) 사이의 값을 돌려준다. 회전 시작각을 무작위로 고르는 데
+	// 쓴다. searchTimeout과 같은 이유로 상수가 아니라 필드로 둔다 — 시험에서
+	// 고정값을 주입해야 회전 각도를 예측 가능하게 만들 수 있다.
+	randFloat func() float64
 }
 
 // NewClient는 실제 카카오를 가리키는 조회기를 만든다.
@@ -91,6 +96,7 @@ func NewClient(apiKey string) *Client {
 		baseURL:       defaultBaseURL,
 		http:          &http.Client{Timeout: requestTimeout},
 		searchTimeout: DefaultSearchTimeout,
+		randFloat:     rand.Float64,
 	}
 }
 
@@ -101,6 +107,7 @@ func NewClientWithBaseURL(apiKey, baseURL string, hc *http.Client) *Client {
 		baseURL:       baseURL,
 		http:          hc,
 		searchTimeout: DefaultSearchTimeout,
+		randFloat:     rand.Float64,
 	}
 }
 
@@ -168,51 +175,62 @@ func ringPoints(lat, lng, radiusM float64, count int, rotationRad float64) []poi
 	return pts
 }
 
-// SearchAround는 사용자 위치와 그 둘레 네 지점을 조회해 합친다.
+// SearchAround는 사용자 위치와, 그 둘레 두 링(400m·800m, 각 4곳)을 요청마다
+// 무작위 각도로 5번 돌려 조회한 결과를 합친다.
 //
-// 왜 한 지점으로 부족한가: 카카오는 한 조회에 가까운 45곳까지만 준다.
-// 사람이 많은 곳에서는 그 45곳이 반경 100~160m 안에 다 들어가서, 반경을
-// 넓혀도 목록이 같다. 그 상태에서 음식 종류를 잘게 나누면 카드 절반이
-// 가게 한 곳짜리가 된다(실측 43%). 다섯 지점을 보면 6%로 떨어진다.
+// 왜 한 지점으로 부족한가: 카카오는 한 조회에 가까운 45곳까지만 준다. 사람이
+// 많은 곳에서는 그 45곳이 반경 100~160m 안에 다 들어가서, 반경을 넓혀도
+// 목록이 같다. 링을 여러 개 두고 회전시켜 조회하는 근거와 실측 수치는
+// docs/superpowers/specs/2026-09-19-search-coverage-expansion-design.md에 있다
+// (강남역 기준 커버리지 11% → 61%).
+//
+// 중심은 요청당 딱 1회만 조회한다. 중심은 사용자의 실제 위치이므로 각도를
+// 아무리 돌려도 좌표가 바뀌지 않고, 완전히 같은 좌표로 다시 물으면 완전히
+// 같은 45곳이 돌아온다 — 회전마다 중심을 다시 조회하면 매번 같은 45곳을
+// 헛되이 반복해서 받는 것이다.
 //
 // 돌려주는 모든 Place.Distance는 카카오가 준 값이 아니라 사용자가 준
 // lat,lng 기준으로 다시 계산한 값이다. 카카오의 거리는 조회 중심 기준이라
 // 그대로 쓰면 412m가 24m로 표시된다.
 //
-// 돌려주는 목록은 그 거리의 **오름차순**이다. 다섯 지점을 합친 결과를 병합 순서
+// 돌려주는 목록은 그 거리의 **오름차순**이다. 여러 지점을 합친 결과를 병합 순서
 // 그대로 주면 조회기로서 이상한 계약이라, 여기서 약속하고 여기서 지킨다.
 // 부르는 쪽인 httpapi도 자기 응답을 따로 정렬한다 — 조회기를 갈아 끼우면 이쪽
 // 약속만 조용히 사라지므로, 두 자리 모두 자기 약속을 자기가 지킨다.
 func (c *Client) SearchAround(ctx context.Context, lat, lng float64, radius int) ([]Place, error) {
-	// 다섯 지점 전체의 시간 상한. 안쪽 SearchRestaurants도 각자 상한을 열지만,
+	// 전체 조회의 시간 상한. 안쪽 SearchRestaurants도 각자 상한을 열지만,
 	// 이미 마감이 잡힌 부모에서 파생되므로 더 이른 이쪽 마감을 물려받는다.
-	// 이 줄이 없으면 중심(≤12초)과 둘레(≤12초)의 예산이 더해져 최악 24초가 되고,
+	// 이 줄이 없으면 중심(≤12초)과 링(≤12초)의 예산이 더해져 최악 24초가 되고,
 	// 서버의 응답 쓰기 상한(20초)과 화면 요청 상한(20초)을 넘어선다 —
 	// 안쪽이 바깥쪽보다 짧아야 한다는 순서가 뒤집힌다.
 	ctx, cancel := context.WithTimeout(ctx, c.searchTimeout)
 	defer cancel()
 
-	// 중심을 먼저 부른다. 다섯을 한꺼번에 쏘면 우리 요청 하나가 카카오 호출을
-	// 열다섯 개 동시에 내는데, 429가 순간 호출 제한이라면 사용자가 한 명뿐일 때도
+	// 중심을 먼저 부른다. 링 점을 한꺼번에 쏘면 우리 요청 하나가 카카오 호출을
+	// 마흔 개 동시에 내는데, 429가 순간 호출 제한이라면 사용자가 한 명뿐일 때도
 	// 그중 몇 개가 튕긴다. 하필 중심이 튕기면 전체가 실패로 답해진다.
 	center, err := c.SearchRestaurants(ctx, lat, lng, radius)
 	if err != nil {
 		return nil, err
 	}
 
-	offsets := [4][2]float64{
-		{innerRingRadiusM, 0},  // 북
-		{0, innerRingRadiusM},  // 동
-		{-innerRingRadiusM, 0}, // 남
-		{0, -innerRingRadiusM}, // 서
-	}
-	points := make([]point, 0, len(offsets))
-	for _, o := range offsets {
-		pLat, pLng := geo.Offset(lat, lng, o[0], o[1])
-		points = append(points, point{pLat, pLng})
+	// 시작각을 [0, 90도) 사이에서 무작위로 하나 뽑는다. 두 링 모두 점이
+	// ringPointCount(4)개씩이라 90도를 돌리면 점들이 서로 자리를 맞바꿔
+	// 처음과 같은 배치가 되므로, 완전히 새로운 배치를 볼 수 있는 범위가
+	// 그 구간뿐이다. 시작각을 고정하지 않는 이유: 고정하면 모든 사용자가
+	// 영원히 똑같은 후보 풀에서만 뽑게 된다.
+	startRad := c.randFloat() * rotationRangeDeg * math.Pi / 180
+
+	// 5번 회전하며 두 링(400m·800m)의 점을 모은다. 중심은 위에서 이미
+	// 한 번 조회했으므로 여기서 다시 넣지 않는다.
+	points := make([]point, 0, rotationSteps*ringPointCount*2)
+	for step := 0; step < rotationSteps; step++ {
+		angle := startRad + float64(step)*rotationStepDeg*math.Pi/180
+		points = append(points, ringPoints(lat, lng, innerRingRadiusM, ringPointCount, angle)...)
+		points = append(points, ringPoints(lat, lng, outerRingRadiusM, ringPointCount, angle)...)
 	}
 
-	// 둘레는 보강이다. 하나가 실패해도 그 지점만 버리고 계속한다 —
+	// 링 점들은 보강이다. 하나가 실패해도 그 지점만 버리고 계속한다 —
 	// 각 지점이 독립적으로 완전하거나 통째로 없으므로, 하나가 빠져도
 	// 남은 것들의 분포는 온전하다.
 	results := make([][]Place, len(points))
@@ -223,7 +241,7 @@ func (c *Client) SearchAround(ctx context.Context, lat, lng float64, radius int)
 			defer wg.Done()
 			found, err := c.SearchRestaurants(ctx, p.lat, p.lng, radius)
 			if err != nil {
-				slog.Warn("둘레 지점 조회에 실패해 그 지점을 건너뜁니다",
+				slog.Warn("링 지점 조회에 실패해 그 지점을 건너뜁니다",
 					"error", err.Error())
 				return
 			}

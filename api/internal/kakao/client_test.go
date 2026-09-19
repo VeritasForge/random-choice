@@ -851,11 +851,11 @@ func TestSearchAroundMergesAllPoints(t *testing.T) {
 	if err != nil {
 		t.Fatalf("SearchAround = %v", err)
 	}
-	if len(places) != 5 {
-		t.Fatalf("받은 가게 %d곳, want 5곳 (지점마다 하나씩)", len(places))
+	if len(places) != 41 {
+		t.Fatalf("받은 가게 %d곳, want 41곳 (중심 1 + 링 40, 지점마다 하나씩)", len(places))
 	}
-	if len(seenPoints) != 5 {
-		t.Errorf("조회한 지점 %d곳, want 5곳", len(seenPoints))
+	if len(seenPoints) != 41 {
+		t.Errorf("조회한 지점 %d곳, want 41곳", len(seenPoints))
 	}
 }
 
@@ -890,8 +890,8 @@ func TestSearchAroundRecomputesDistanceFromUserPosition(t *testing.T) {
 	if err != nil {
 		t.Fatalf("SearchAround = %v", err)
 	}
-	if len(places) != 5 {
-		t.Fatalf("받은 가게 %d곳, want 5곳 (지점마다 하나씩)", len(places))
+	if len(places) != 41 {
+		t.Fatalf("받은 가게 %d곳, want 41곳 (중심 1 + 링 40, 지점마다 하나씩)", len(places))
 	}
 
 	var far int
@@ -1014,8 +1014,8 @@ func TestSearchAroundKeepsPlacesWithEmptyID(t *testing.T) {
 	if err != nil {
 		t.Fatalf("SearchAround = %v", err)
 	}
-	if len(places) != 5 {
-		t.Errorf("식별자가 빈 가게 %d곳이 남았다, want 5곳 — "+
+	if len(places) != 41 {
+		t.Errorf("식별자가 빈 가게 %d곳이 남았다, want 41곳 — "+
 			"빈 식별자로 중복 판정을 하면 멀쩡한 가게들이 서로를 지운다", len(places))
 	}
 }
@@ -1166,6 +1166,126 @@ func TestSearchAroundKeepsOneTimeBudgetForAllPoints(t *testing.T) {
 		t.Errorf("SearchAround가 %v 걸렸다(상한 %v = 예산 %v의 1.25배). "+
 			"중심과 둘레가 예산을 각자 새로 열고 있다 — 맨 위에서 전체 예산을 "+
 			"한 번만 잡아 안쪽이 그 마감을 물려받게 해야 한다", elapsed, limit, budget)
+	}
+}
+
+// 중심은 사용자 위치 그 자체라 각도를 돌려도 좌표가 바뀌지 않는다. 완전히 같은
+// 좌표로 다시 물으면 완전히 같은 45곳이 돌아오므로(SearchRestaurants 시험이
+// 이미 이것을 증명한다), 회전마다 중심을 다시 조회하면 매번 같은 45곳을
+// 헛되이 반복해서 받는 것이다.
+func TestSearchAroundQueriesCenterExactlyOnce(t *testing.T) {
+	const userLat, userLng = 37.4979, 127.0276
+	var mu sync.Mutex
+	var centerHits int
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if isCenterRequest(r, userLat, userLng) {
+			mu.Lock()
+			centerHits++
+			mu.Unlock()
+		}
+		writeJSON(t, w, `{"documents":[],"meta":{"is_end":true}}`)
+	}))
+	defer server.Close()
+
+	client := NewClientWithBaseURL("key", server.URL, server.Client())
+	if _, err := client.SearchAround(context.Background(), userLat, userLng, 500); err != nil {
+		t.Fatalf("SearchAround = %v", err)
+	}
+
+	mu.Lock()
+	defer mu.Unlock()
+	if centerHits != 1 {
+		t.Errorf("중심 좌표가 %d번 조회됐다. 회전 횟수(5회)와 무관하게 1번만 "+
+			"조회해야 한다 — 재조회는 완전히 같은 45곳을 헛되이 반복해서 받는 것이다",
+			centerHits)
+	}
+}
+
+// randFloat 값이 실제로 회전 각도에 반영되는지 확인한다. 반영되지 않으면
+// 모든 사용자가 영원히 같은 후보 풀에서만 뽑게 된다(설계 문서 3-3절).
+func TestSearchAroundRotatesRingPointsUsingInjectedRandomness(t *testing.T) {
+	const userLat, userLng = 37.4979, 127.0276
+
+	capture := func(randFloat func() float64) map[string]bool {
+		seen := map[string]bool{}
+		var mu sync.Mutex
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			x, y := r.URL.Query().Get("x"), r.URL.Query().Get("y")
+			mu.Lock()
+			seen[x+","+y] = true
+			mu.Unlock()
+			writeJSON(t, w, `{"documents":[],"meta":{"is_end":true}}`)
+		}))
+		defer server.Close()
+
+		client := NewClientWithBaseURL("key", server.URL, server.Client())
+		client.randFloat = randFloat
+		if _, err := client.SearchAround(context.Background(), userLat, userLng, 500); err != nil {
+			t.Fatalf("SearchAround = %v", err)
+		}
+		return seen
+	}
+
+	first := capture(func() float64 { return 0 })
+	second := capture(func() float64 { return 0.5 })
+
+	if len(first) != 41 || len(second) != 41 {
+		t.Fatalf("조회한 지점이 각각 %d곳, %d곳이다. 41곳(중심 1 + 링 40)이어야 한다",
+			len(first), len(second))
+	}
+
+	overlap := 0
+	for p := range first {
+		if second[p] {
+			overlap++
+		}
+	}
+	// 중심 좌표 하나는 두 경우 모두 같으므로 최소 1곳은 겹친다. 링 지점까지
+	// 크게 겹치면 randFloat 값이 회전 각도에 반영되지 않고 있다는 뜻이다.
+	if overlap > 5 {
+		t.Errorf("두 회전 시작값(0과 0.5)의 조회 지점이 %d곳이나 겹쳤다. "+
+			"randFloat 값이 회전 각도에 반영되지 않고 있는 것으로 보인다", overlap)
+	}
+}
+
+// 시작각 0도일 때 실제로 조회하는 마흔 개 링 점의 좌표가 설계 문서 3-1·3-3절의
+// 공식(시작각 + 걸음 × 18도, 링마다 90도 간격 4점)과 정확히 일치하는지 못박는다.
+func TestSearchAroundRingPointsMatchExpectedGeometry(t *testing.T) {
+	const userLat, userLng = 37.4979, 127.0276
+	var mu sync.Mutex
+	seen := map[string]bool{}
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		x, y := r.URL.Query().Get("x"), r.URL.Query().Get("y")
+		mu.Lock()
+		seen[x+","+y] = true
+		mu.Unlock()
+		writeJSON(t, w, `{"documents":[],"meta":{"is_end":true}}`)
+	}))
+	defer server.Close()
+
+	client := NewClientWithBaseURL("key", server.URL, server.Client())
+	client.randFloat = func() float64 { return 0 } // 시작각 0도
+	if _, err := client.SearchAround(context.Background(), userLat, userLng, 500); err != nil {
+		t.Fatalf("SearchAround = %v", err)
+	}
+
+	fmtCoord := func(v float64) string { return strconv.FormatFloat(v, 'f', -1, 64) }
+	for step := 0; step < rotationSteps; step++ {
+		baseDeg := float64(step) * rotationStepDeg
+		for _, radiusM := range []float64{innerRingRadiusM, outerRingRadiusM} {
+			for i := 0; i < ringPointCount; i++ {
+				angle := (baseDeg + float64(i)*90) * math.Pi / 180
+				wantLat, wantLng := geo.Offset(userLat, userLng,
+					radiusM*math.Cos(angle), radiusM*math.Sin(angle))
+				key := fmtCoord(wantLng) + "," + fmtCoord(wantLat)
+				if !seen[key] {
+					t.Errorf("걸음 %d, 반경 %.0fm, %d번째 점(%s)이 조회되지 않았다",
+						step, radiusM, i, key)
+				}
+			}
+		}
 	}
 }
 
