@@ -124,16 +124,49 @@ type searchResponse struct {
 	} `json:"meta"`
 }
 
-// perimeterOffsetM은 둘레 지점을 중심에서 얼마나 옮길지다.
+// innerRingRadiusM·outerRingRadiusM은 두 링의 반지름(m)이다.
 //
-// 400m인 근거: 2026-09-06 실측에서 네 지역(홍대입구·강남·판교·상계) 모두
-// 중심이 실제로 보는 범위가 반경 100~160m였다. 400m 떨어진 지점의 원은
-// 그것과 만날 수 없어 겹치는 가게가 0곳이었고, 45곳이 약 220곳이 됐다.
-// 새로 나온 가게는 사용자 원위치에서 127~618m(중앙값 194~394m)에 있었다.
+// innerRingRadiusM(400m)의 근거: 2026-09-06 실측에서 네 지역(홍대입구·강남·판교·상계)
+// 모두 중심이 실제로 보는 범위가 반경 100~160m였다. 400m 떨어진 지점의 원은
+// 그것과 만날 수 없어 겹치는 가게가 0곳이었다.
 //
-// 이 값이 사용자에게 가장 좋은 거리인지는 확인되지 않았다. 300m나 500m가
-// 나을 수도 있다(설계 문서 14절).
-const perimeterOffsetM = 400.0
+// outerRingRadiusM(800m)의 근거와 두 링을 회전시켜 조회하기로 한 근거는
+// docs/superpowers/specs/2026-09-19-search-coverage-expansion-design.md
+// 3-1·3-3절에 있다 — 강남역 기준 커버리지가 11%에서 61%로 오른다.
+const (
+	innerRingRadiusM = 400.0
+	outerRingRadiusM = 800.0
+	// ringPointCount는 링 하나에 놓는 점의 개수다. 두 링 모두 같은 값을 쓴다.
+	ringPointCount = 4
+
+	// rotationSteps·rotationStepDeg·rotationRangeDeg는 요청 한 건 안에서
+	// 링을 몇 번, 몇 도씩 돌려 조회할지를 정한다. 세 값은 서로 맞물려 있다 —
+	// ringPointCount(4)가 90도마다 배치를 되풀이하므로(rotationRangeDeg),
+	// 그 구간을 rotationSteps(5)걸음으로 고르게 나누면 rotationStepDeg(18도)가
+	// 나온다. 하나를 바꾸면 나머지도 함께 봐야 한다.
+	rotationSteps    = 5
+	rotationStepDeg  = 18.0
+	rotationRangeDeg = 90.0
+)
+
+// point는 조회할 좌표 하나다.
+type point struct{ lat, lng float64 }
+
+// ringPoints는 중심(lat,lng)에서 radiusM만큼 떨어진 자리에 count개의 점을
+// rotationRad(라디안)만큼 돌려서 원 모양으로 늘어놓는다. count개 점은 서로
+// (360/count)도 간격으로 놓인다.
+//
+// "링"이라는 이름의 근거: 중심에서 같은 거리에 있는 점들의 모임이 그리는 모양이
+// 원(고리)이기 때문이다. 설계 문서 3-1절에 그림으로 설명해 두었다.
+func ringPoints(lat, lng, radiusM float64, count int, rotationRad float64) []point {
+	pts := make([]point, 0, count)
+	for i := 0; i < count; i++ {
+		angle := rotationRad + 2*math.Pi*float64(i)/float64(count)
+		pLat, pLng := geo.Offset(lat, lng, radiusM*math.Cos(angle), radiusM*math.Sin(angle))
+		pts = append(pts, point{pLat, pLng})
+	}
+	return pts
+}
 
 // SearchAround는 사용자 위치와 그 둘레 네 지점을 조회해 합친다.
 //
@@ -167,12 +200,11 @@ func (c *Client) SearchAround(ctx context.Context, lat, lng float64, radius int)
 		return nil, err
 	}
 
-	type point struct{ lat, lng float64 }
 	offsets := [4][2]float64{
-		{perimeterOffsetM, 0},  // 북
-		{0, perimeterOffsetM},  // 동
-		{-perimeterOffsetM, 0}, // 남
-		{0, -perimeterOffsetM}, // 서
+		{innerRingRadiusM, 0},  // 북
+		{0, innerRingRadiusM},  // 동
+		{-innerRingRadiusM, 0}, // 남
+		{0, -innerRingRadiusM}, // 서
 	}
 	points := make([]point, 0, len(offsets))
 	for _, o := range offsets {

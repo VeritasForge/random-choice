@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
@@ -13,6 +14,8 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/VeritasForge/random-choice/api/internal/geo"
 )
 
 // pageJSON은 카카오 응답 한 페이지를 흉내 낸다.
@@ -1163,5 +1166,33 @@ func TestSearchAroundKeepsOneTimeBudgetForAllPoints(t *testing.T) {
 		t.Errorf("SearchAround가 %v 걸렸다(상한 %v = 예산 %v의 1.25배). "+
 			"중심과 둘레가 예산을 각자 새로 열고 있다 — 맨 위에서 전체 예산을 "+
 			"한 번만 잡아 안쪽이 그 마감을 물려받게 해야 한다", elapsed, limit, budget)
+	}
+}
+
+func TestRingPointsPlacesPointsEvenlyAroundCenter(t *testing.T) {
+	const lat, lng = 37.4979, 127.0276
+	pts := ringPoints(lat, lng, 400, 4, 0) // 회전 없음(0라디안), 반경 400m, 점 4개
+	if len(pts) != 4 {
+		t.Fatalf("점 %d개, want 4개", len(pts))
+	}
+	// 회전이 0이면 점은 0도(북)·90도(동)·180도(남)·270도(서)에 놓인다.
+	for i, wantDeg := range []float64{0, 90, 180, 270} {
+		angle := wantDeg * math.Pi / 180
+		wantLat, wantLng := geo.Offset(lat, lng, 400*math.Cos(angle), 400*math.Sin(angle))
+		if pts[i].lat != wantLat || pts[i].lng != wantLng {
+			t.Errorf("%d번째 점 = (%v,%v), want (%v,%v)", i, pts[i].lat, pts[i].lng, wantLat, wantLng)
+		}
+	}
+}
+
+func TestRingPointsAppliesRotation(t *testing.T) {
+	const lat, lng = 37.4979, 127.0276
+	rotation := 18.0 * math.Pi / 180 // 18도
+	pts := ringPoints(lat, lng, 400, 4, rotation)
+	// 첫 점은 회전각 그대로의 방향에 놓여야 한다.
+	wantLat, wantLng := geo.Offset(lat, lng, 400*math.Cos(rotation), 400*math.Sin(rotation))
+	if pts[0].lat != wantLat || pts[0].lng != wantLng {
+		t.Errorf("회전이 반영되지 않았다. got (%v,%v), want (%v,%v)",
+			pts[0].lat, pts[0].lng, wantLat, wantLng)
 	}
 }
