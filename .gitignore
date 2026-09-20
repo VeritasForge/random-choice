@@ -21,3 +21,6 @@ npm-debug.log*
 
 # Playwright MCP가 브라우저 확인 중에 남기는 임시 산출물
 .playwright-mcp/
+
+# 브레인스토밍 도구가 목업 화면을 남기는 폴더
+.superpowers/
