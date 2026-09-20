@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { fetchNearby, NearbyError, REQUEST_TIMEOUT_MS } from "./api";
+import { fetchNearby, fetchSpots, NearbyError, REQUEST_TIMEOUT_MS } from "./api";
 
 function respondWith(status: number, body: unknown) {
   vi.stubGlobal(
@@ -365,5 +365,57 @@ describe("응답 원소 검사 — 항목 하나씩", () => {
     };
     respondWith(200, payload);
     await expect(fetchNearby(37.5, 127.0, 500)).resolves.toEqual(payload);
+  });
+});
+
+describe("장소 검색", () => {
+  it("검색어와 쪽 번호를 붙여 부른다", async () => {
+    let calledUrl = "";
+    vi.stubGlobal("fetch", async (url: string) => {
+      calledUrl = url;
+      return new Response('{"spots":[],"isEnd":true}', { status: 200 });
+    });
+    await fetchSpots("경주", 2);
+    expect(calledUrl).toBe("/api/v1/places?query=%EA%B2%BD%EC%A3%BC&page=2");
+  });
+
+  it("장소 목록과 끝 표시를 돌려준다", async () => {
+    vi.stubGlobal("fetch", async () =>
+      new Response(
+        '{"spots":[{"id":"s1","name":"황리단길","address":"경북","category":"관광명소","lat":35.8,"lng":129.2}],"isEnd":false}',
+        { status: 200 },
+      ),
+    );
+    const got = await fetchSpots("경주", 1);
+    expect(got.spots).toHaveLength(1);
+    expect(got.spots[0].name).toBe("황리단길");
+    expect(got.isEnd).toBe(false);
+  });
+
+  // 모양을 확인하지 않고 단정하면 계약이 어긋난 순간이 아니라 한참 뒤
+  // 화면이 그 값을 쓰는 자리에서 조용히 망가진다. fetchNearby와 같은 규칙이다.
+  it("응답 모양이 다르면 malformed_response로 던진다", async () => {
+    for (const bad of [
+      '{"spots":"목록아님","isEnd":true}',
+      '{"spots":[{"id":"s1"}],"isEnd":true}',
+      '{"spots":[],"isEnd":"참"}',
+      '{"isEnd":true}',
+      "[]",
+    ]) {
+      vi.stubGlobal("fetch", async () => new Response(bad, { status: 200 }));
+      await expect(fetchSpots("경주", 1)).rejects.toMatchObject({ code: "malformed_response" });
+    }
+  });
+
+  it("서버가 준 오류 코드를 그대로 전한다", async () => {
+    vi.stubGlobal("fetch", async () =>
+      new Response('{"error":"invalid_query","message":"비어 있습니다."}', { status: 400 }),
+    );
+    await expect(fetchSpots("", 1)).rejects.toMatchObject({ code: "invalid_query", status: 400 });
+  });
+
+  it("서버에 닿지 못하면 network_error로 던진다", async () => {
+    vi.stubGlobal("fetch", async () => { throw new TypeError("fetch failed"); });
+    await expect(fetchSpots("경주", 1)).rejects.toMatchObject({ code: "network_error" });
   });
 });

@@ -1,3 +1,5 @@
+import type { Spot } from "./spots";
+
 /**
  * 음식 종류 하나. id와 label을 나눠 두는 이유는 쓰임이 다르기 때문이다 —
  * id는 저장·대조에 쓰는 우리 어휘의 식별자이고(카카오 데이터가 아니라 저장해도 된다),
@@ -199,6 +201,117 @@ export async function fetchNearby(
     // 화면이 그 값을 쓰는 자리에서 터지거나 조용히 빈 화면이 된다. 실패는 발생 지점에서 멈춰야 한다.
     if (!isNearbyResult(body)) {
       console.error("[fetchNearby] 응답 형식이 예상과 다릅니다", response.status, body);
+      throw new NearbyError(
+        "malformed_response",
+        "서버 응답 형식이 예상과 다릅니다.",
+        response.status,
+      );
+    }
+    return body;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+export type SpotsResult = { spots: Spot[]; isEnd: boolean };
+
+function isSpot(value: unknown): value is Spot {
+  if (typeof value !== "object" || value === null) return false;
+  const c = value as Spot;
+  return (
+    // id는 빌 수 있다. 카카오가 식별자 없는 장소도 주고, lib/spots.ts가
+    // 그런 장소를 중복 판정에서 빼면서 그대로 살리기 때문이다.
+    typeof c.id === "string" &&
+    // name이 비면 글자 없는 줄이 목록에 뜬다. 누를 수는 있는데 무엇을 고르는지
+    // 보이지 않으므로 오류 없이 망가진 화면이 된다.
+    typeof c.name === "string" &&
+    c.name.length > 0 &&
+    typeof c.address === "string" &&
+    typeof c.category === "string" &&
+    Number.isFinite(c.lat) &&
+    Number.isFinite(c.lng)
+  );
+}
+
+function isSpotsResult(value: unknown): value is SpotsResult {
+  if (typeof value !== "object" || value === null) return false;
+  const c = value as { spots?: unknown; isEnd?: unknown };
+  return Array.isArray(c.spots) && c.spots.every(isSpot) && typeof c.isEnd === "boolean";
+}
+
+/**
+ * 이름으로 장소를 찾는다. 한 번에 한 쪽씩 받는다.
+ *
+ * 부르는 쪽은 돌려받은 isEnd를 보고 멈춰야 한다. 카카오는 마지막 쪽을 넘겨
+ * 요청받아도 오류 대신 마지막 쪽을 그대로 다시 주기 때문이다.
+ */
+export async function fetchSpots(query: string, page: number): Promise<SpotsResult> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+
+  // 타이머 해제를 함수 전체의 finally에 둔다. fetchNearby와 같은 이유다 —
+  // fetch만 감싸면 헤더가 도착하는 순간 상한이 풀려, 본문 스트림이 멈췄을 때
+  // 아래 response.json()이 영영 끝나지 않는다.
+  try {
+    let response: Response;
+    try {
+      // 검색어를 encodeURIComponent로 감싼다. 사용자가 &나 =를 치면 그대로
+      // 붙였을 때 질의 문자열이 깨져 엉뚱한 값이 서버에 간다.
+      response = await fetch(`/api/v1/places?query=${encodeURIComponent(query)}&page=${page}`, {
+        signal: controller.signal,
+      });
+    } catch (cause) {
+      if (controller.signal.aborted) {
+        throw new NearbyError("timeout", "서버가 제때 응답하지 않았습니다.");
+      }
+      console.error("[fetchSpots] 요청이 실패했습니다", cause);
+      throw new NearbyError("network_error", "서버에 연결하지 못했습니다.");
+    }
+
+    if (!response.ok) {
+      let body: unknown = null;
+      try {
+        body = await response.json();
+      } catch (cause) {
+        // 오류 본문을 읽는 도중에도 상한에 걸릴 수 있다. 그것까지 "알 수 없는 오류"로
+        // 뭉뚱그리면 사용자는 기다리다 실패했다는 사실을 안내받지 못한다.
+        if (controller.signal.aborted) {
+          throw new NearbyError(
+            "timeout",
+            "서버가 제때 응답하지 않았습니다.",
+            response.status,
+          );
+        }
+        console.error("[fetchSpots] 오류 본문을 해석하지 못했습니다", response.status, cause);
+      }
+      const parsed = body as { error?: unknown; message?: unknown } | null;
+      const code = typeof parsed?.error === "string" ? parsed.error : "unknown_error";
+      const message =
+        typeof parsed?.message === "string"
+          ? parsed.message
+          : "알 수 없는 오류가 발생했습니다.";
+      throw new NearbyError(code, message, response.status);
+    }
+
+    let body: unknown;
+    try {
+      body = await response.json();
+    } catch (cause) {
+      if (controller.signal.aborted) {
+        throw new NearbyError("timeout", "서버가 제때 응답하지 않았습니다.", response.status);
+      }
+      console.error("[fetchSpots] 응답 본문을 해석하지 못했습니다", response.status, cause);
+      throw new NearbyError(
+        "malformed_response",
+        "서버 응답을 이해하지 못했습니다.",
+        response.status,
+      );
+    }
+
+    // 모양을 확인한 뒤에만 돌려준다. 확인하지 않고 단정하면 계약이 어긋난 순간이
+    // 아니라 한참 뒤 화면이 그 값을 쓰는 자리에서 조용히 망가진다.
+    if (!isSpotsResult(body)) {
+      console.error("[fetchSpots] 응답 형식이 예상과 다릅니다", response.status, body);
       throw new NearbyError(
         "malformed_response",
         "서버 응답 형식이 예상과 다릅니다.",
