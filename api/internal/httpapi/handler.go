@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"sort"
 	"strconv"
+	"strings"
 
 	"github.com/VeritasForge/random-choice/api/internal/cuisine"
 	"github.com/VeritasForge/random-choice/api/internal/kakao"
@@ -38,6 +39,14 @@ type PlaceFinder interface {
 	SearchAround(ctx context.Context, lat, lng float64, radius int) ([]kakao.Place, error)
 }
 
+// SpotFinder는 이름으로 장소를 찾아 주는 무언가다.
+// PlaceFinder와 나눠 두는 이유: 이 둘은 실제로는 같은 카카오 조회기가 제공하지만,
+// 계약을 합치면 음식점 조회만 가짜로 두고 싶은 시험이 쓰지 않을 메서드까지
+// 구현해야 한다. 나눠 두면 각 경로의 동작을 따로 확인할 수 있다.
+type SpotFinder interface {
+	SearchSpots(ctx context.Context, query string, page int) ([]kakao.Spot, bool, error)
+}
+
 type cuisineDTO struct {
 	ID    string `json:"id"`
 	Label string `json:"label"`
@@ -61,6 +70,24 @@ type nearbyResponse struct {
 	Places   []placeDTO   `json:"places"`
 }
 
+type spotDTO struct {
+	ID       string  `json:"id"`
+	Name     string  `json:"name"`
+	Address  string  `json:"address"`
+	Category string  `json:"category"`
+	Lat      float64 `json:"lat"`
+	Lng      float64 `json:"lng"`
+}
+
+type placesResponse struct {
+	Spots []spotDTO `json:"spots"`
+	// IsEnd는 카카오가 "더 없다"고 알렸는지다.
+	// **화면은 이 값을 보고 `더 보기`를 감춰야 한다.** 카카오는 마지막 페이지를
+	// 넘겨 요청해도 오류 대신 마지막 페이지를 그대로 다시 주므로, 이 값을 무시하면
+	// 같은 장소가 목록에 끝없이 쌓인다.
+	IsEnd bool `json:"isEnd"`
+}
+
 type errorResponse struct {
 	Error   string `json:"error"`
 	Message string `json:"message"`
@@ -73,7 +100,7 @@ type errorResponse struct {
 // internalKey는 화면 서버와 나눠 갖는 비밀값이다. 조회 경로만 이 값으로 막는다.
 // 빈 문자열이면 검사하지 않는다 — 그 경우 누구나 부를 수 있다는 사실은 서버를 켜는
 // 자리(cmd/server/main.go)가 경고로 알린다.
-func NewHandler(finder PlaceFinder, internalKey string) http.Handler {
+func NewHandler(finder PlaceFinder, spots SpotFinder, internalKey string) http.Handler {
 	// 비밀값의 해시는 언제나 같은 값이라 여기서 한 번만 만든다. 요청마다 다시 만들면
 	// 그 계산 시간이 비밀값 길이에 따라(SHA-256은 64바이트 덩어리 단위로 돈다) 달라져,
 	// 해시로 없애려던 길이 누출이 아주 작게 되돌아온다.
@@ -95,6 +122,14 @@ func NewHandler(finder PlaceFinder, internalKey string) http.Handler {
 		}
 		handleNearby(w, r, finder)
 	})
+	mux.HandleFunc("GET /api/v1/places", func(w http.ResponseWriter, r *http.Request) {
+		if !authorized(r, wantKey) {
+			writeError(w, http.StatusUnauthorized, "unauthorized",
+				"허가되지 않은 요청입니다.")
+			return
+		}
+		handlePlaces(w, r, spots)
+	})
 	// 상태 확인 두 경로는 막지 않는다. Vercel과 감시 도구가 비밀값 없이 닿아야 하고,
 	// 둘 다 카카오를 부르지 않아 호출 한도를 쓰지 않는다.
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
@@ -105,7 +140,7 @@ func NewHandler(finder PlaceFinder, internalKey string) http.Handler {
 	// 멀쩡히 살아 있어서 healthz만 보면 초록불이지만, 실제 조회는 100% 실패한다.
 	// 나중에 로드밸런서를 붙일 때 트래픽 게이트는 이쪽을 봐야 한다.
 	mux.HandleFunc("GET /readyz", func(w http.ResponseWriter, _ *http.Request) {
-		if finder == nil {
+		if finder == nil || spots == nil {
 			writeError(w, http.StatusServiceUnavailable, "not_configured",
 				"서버에 카카오 열쇠가 설정되지 않았습니다.")
 			return
@@ -217,6 +252,83 @@ func handleNearby(w http.ResponseWriter, r *http.Request, finder PlaceFinder) {
 	}
 
 	writeJSON(w, http.StatusOK, buildResponse(found))
+}
+
+func handlePlaces(w http.ResponseWriter, r *http.Request, spots SpotFinder) {
+	query := strings.TrimSpace(r.URL.Query().Get("query"))
+	if query == "" {
+		writeError(w, http.StatusBadRequest, "invalid_query", "찾을 장소 이름이 비어 있습니다.")
+		return
+	}
+	page, ok := parsePage(r)
+	if !ok {
+		writeError(w, http.StatusBadRequest, "invalid_query", "쪽 번호가 올바르지 않습니다.")
+		return
+	}
+
+	// 요청 자체가 잘못됐는지를 먼저 가린 다음에 서버 설정을 본다.
+	// handleNearby와 같은 순서다 — 잘못된 요청은 열쇠가 있든 없든 400이어야 한다.
+	if spots == nil {
+		writeError(w, http.StatusInternalServerError, "not_configured",
+			"서버에 카카오 열쇠가 설정되지 않았습니다.")
+		return
+	}
+
+	found, isEnd, err := spots.SearchSpots(r.Context(), query, page)
+	if err != nil {
+		// 아래 로그에 검색어를 남기지 않는다. 사용자가 어디를 찾아봤는지가
+		// 로그에 쌓이는 것은 좌표를 남기지 않기로 한 것과 같은 이유로 피한다.
+		if r.Context().Err() != nil {
+			slog.Info("장소 검색 요청이 취소되었습니다")
+			return
+		}
+		if errors.Is(err, context.DeadlineExceeded) {
+			slog.Warn("장소 검색이 제한 시간 안에 끝나지 않았습니다")
+			writeError(w, http.StatusGatewayTimeout, "timeout",
+				"조회가 제한 시간 안에 끝나지 않았습니다.")
+			return
+		}
+		if errors.Is(err, kakao.ErrQuotaExceeded) {
+			slog.Warn("카카오 호출 한도를 소진했습니다")
+			writeError(w, http.StatusTooManyRequests, "quota_exceeded",
+				"오늘 조회 한도를 다 썼습니다. 내일 다시 이용해 주세요.")
+			return
+		}
+		if errors.Is(err, kakao.ErrInvalidKey) {
+			slog.Error("카카오가 열쇠를 거부했습니다", "error", err)
+			writeError(w, http.StatusInternalServerError, "invalid_key",
+				"서버의 카카오 열쇠가 유효하지 않습니다.")
+			return
+		}
+		slog.Error("장소 검색에 실패했습니다", "error", err)
+		writeError(w, http.StatusBadGateway, "upstream_error", "장소 정보를 가져오지 못했습니다.")
+		return
+	}
+
+	dtos := make([]spotDTO, 0, len(found))
+	for _, s := range found {
+		dtos = append(dtos, spotDTO{
+			ID: s.ID, Name: s.Name, Address: s.Address,
+			Category: s.Category, Lat: s.Lat, Lng: s.Lng,
+		})
+	}
+	writeJSON(w, http.StatusOK, placesResponse{Spots: dtos, IsEnd: isEnd})
+}
+
+// parsePage는 쪽 번호를 읽는다. 없으면 1쪽으로 본다.
+// 상한을 두지 않는 이유: 카카오가 마지막 페이지 너머를 요청받으면 오류 대신
+// 마지막 페이지를 다시 주므로, 큰 수가 와도 사고가 나지 않는다. 다만 0 이하는
+// 카카오가 400으로 답하므로 여기서 먼저 막아 호출 한도를 아낀다.
+func parsePage(r *http.Request) (int, bool) {
+	raw := r.URL.Query().Get("page")
+	if raw == "" {
+		return 1, true
+	}
+	page, err := strconv.Atoi(raw)
+	if err != nil || page < 1 {
+		return 0, false
+	}
+	return page, true
 }
 
 // parseCoordinates는 위도·경도를 읽는다. 하나라도 올바르지 않으면 false를 돌려준다.

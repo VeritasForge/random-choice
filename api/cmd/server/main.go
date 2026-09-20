@@ -39,8 +39,12 @@ func main() {
 	// 열쇠가 없으면 조회기를 만들지 않는다. 그러면 조회 요청은 not_configured로 답한다.
 	// 서버 자체는 정상적으로 떠서, 무엇이 빠졌는지 응답으로 알 수 있다.
 	var finder httpapi.PlaceFinder
+	var spots httpapi.SpotFinder
 	if key := os.Getenv("KAKAO_REST_API_KEY"); key != "" {
-		finder = kakao.NewClient(key)
+		// 같은 조회기가 두 계약을 모두 만족한다. 둘을 따로 받는 것은 시험에서
+		// 한쪽만 가짜로 둘 수 있게 하기 위해서다(httpapi.SpotFinder 주석 참고).
+		client := kakao.NewClient(key)
+		finder, spots = client, client
 	} else {
 		slog.Warn("KAKAO_REST_API_KEY가 없습니다. 조회 요청은 not_configured로 응답합니다")
 	}
@@ -54,7 +58,7 @@ func main() {
 	}
 
 	server := &http.Server{
-		Handler:           httpapi.NewHandler(finder, internalKey),
+		Handler:           httpapi.NewHandler(finder, spots, internalKey),
 		ReadHeaderTimeout: 5 * time.Second,
 		// 응답을 천천히 읽는(또는 읽지 않는) 상대가 연결과 고루틴을 무기한 붙잡지 못하게 한다.
 		WriteTimeout: writeTimeout,
