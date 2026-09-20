@@ -36,16 +36,18 @@ export type Fetcher = (url: string, init?: RequestInit) => Promise<Response>;
 export const INTERNAL_KEY_HEADER = "X-Internal-Key";
 
 /**
- * 조회 요청을 Go 서버로 넘기고 그 응답을 그대로 돌려준다.
+ * 어느 경로든 Go 서버로 넘기고 그 응답을 그대로 돌려준다.
  *
- * @param search 브라우저가 보낸 질의 문자열("?lat=...&lng=...&radius=..."). 손대지 않고 넘긴다.
+ * @param path Go 서버의 경로. "/api/v1/nearby" 또는 "/api/v1/places".
+ * @param search 브라우저가 보낸 질의 문자열. 손대지 않고 넘긴다.
  * @param apiOrigin Go 서버 주소.
  * @param internalKey 두 서버가 나눠 갖는 비밀값. 빈 문자열이면 헤더를 아예 붙이지 않는다.
  *   **ASCII여야 한다** — HTTP 헤더 값은 latin-1만 담을 수 있어서, 한글처럼 그 범위를 넘는
  *   글자가 섞이면 fetch가 요청을 보내기도 전에 TypeError를 던진다(모든 조회가 실패한다).
  * @param fetcher 실제 호출자.
  */
-export async function proxyNearby(
+export async function proxyToApi(
+  path: string,
   search: string,
   apiOrigin: string,
   internalKey: string,
@@ -61,7 +63,7 @@ export async function proxyNearby(
   let upstream: Response;
   let body: string;
   try {
-    upstream = await fetcher(`${apiOrigin}/api/v1/nearby${search}`, { headers });
+    upstream = await fetcher(`${apiOrigin}${path}${search}`, { headers });
     // 상태 코드와 본문을 손대지 않고 넘긴다. 오류일 때도 마찬가지다 — 화면의
     // errors.ts가 서버가 준 코드로 안내 문구를 고르기 때문에, 여기서 삼키면
     // 사용자는 무엇이 잘못됐는지 알 방법이 없어진다.
@@ -100,6 +102,21 @@ export async function proxyNearby(
   responseHeaders.set("Cache-Control", "no-store");
 
   return new Response(body, { status: upstream.status, headers: responseHeaders });
+}
+
+/**
+ * 음식점 조회를 넘긴다. proxyToApi의 얇은 껍데기로 남긴다.
+ *
+ * 이 이름을 지우지 않는 이유: 부르는 자리(app/api/v1/nearby/route.ts)가 무엇을
+ * 넘기는지 이름으로 드러나고, 기존 시험이 이 계약을 그대로 지키고 있다.
+ */
+export async function proxyNearby(
+  search: string,
+  apiOrigin: string,
+  internalKey: string,
+  fetcher: Fetcher,
+): Promise<Response> {
+  return proxyToApi("/api/v1/nearby", search, apiOrigin, internalKey, fetcher);
 }
 
 /**

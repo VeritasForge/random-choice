@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { errorNotice, KNOWN_ERROR_CODES, UNREACHABLE_ERROR_CODE } from "./errors";
-import { INTERNAL_KEY_HEADER, proxyNearby, type Fetcher } from "./proxy";
+import { INTERNAL_KEY_HEADER, proxyNearby, proxyToApi, type Fetcher } from "./proxy";
 
 /**
  * 가짜 호출자. 받은 주소와 요청 설정을 기록하고, 미리 정해 둔 응답을 돌려준다.
@@ -154,5 +154,49 @@ describe("proxyNearby", () => {
       expect((await response.json()).error).toBe(UNREACHABLE_ERROR_CODE);
       expect(response.headers.get("Cache-Control")).toBe("no-store");
     });
+  });
+});
+
+describe("경로를 받아 넘기기", () => {
+  it("받은 경로와 질의 문자열을 그대로 붙여 부른다", async () => {
+    let calledUrl = "";
+    const fetcher = async (url: string) => {
+      calledUrl = url;
+      return new Response('{"spots":[],"isEnd":true}', {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    };
+    await proxyToApi("/api/v1/places", "?query=경주&page=2", "http://api.test", "", fetcher);
+    expect(calledUrl).toBe("http://api.test/api/v1/places?query=경주&page=2");
+  });
+
+  it("비밀 헤더를 붙인다", async () => {
+    let gotHeaders: HeadersInit | undefined;
+    const fetcher = async (_url: string, init?: RequestInit) => {
+      gotHeaders = init?.headers;
+      return new Response("{}", { status: 200 });
+    };
+    await proxyToApi("/api/v1/places", "?query=경주", "http://api.test", "s3cret", fetcher);
+    expect(gotHeaders).toEqual({ "X-Internal-Key": "s3cret" });
+  });
+
+  // 조회 서버에 닿지 못했을 때, 장소 검색에서도 같은 오류 코드로 답해야 한다.
+  // 코드가 다르면 화면의 안내 표(errors.ts)에 없는 코드가 되어 기본 문구로 떨어지고,
+  // 눌러도 낫지 않는 다시 시도 단추가 다시 그려진다.
+  it("조회 서버에 닿지 못하면 api_unreachable로 답한다", async () => {
+    const fetcher = async () => {
+      throw new TypeError("fetch failed");
+    };
+    const res = await proxyToApi("/api/v1/places", "?query=경주", "http://api.test", "", fetcher);
+    expect(res.status).toBe(502);
+    const body = (await res.json()) as { error: string };
+    expect(body.error).toBe("api_unreachable");
+  });
+
+  it("캐시 금지를 붙인다", async () => {
+    const fetcher = async () => new Response("{}", { status: 200 });
+    const res = await proxyToApi("/api/v1/places", "?query=경주", "http://api.test", "", fetcher);
+    expect(res.headers.get("Cache-Control")).toBe("no-store");
   });
 });
