@@ -10,6 +10,10 @@
  *   브라우저 ──/api/v1/nearby──▶ 화면 서버 ──X-Internal-Key──▶ Go 서버
  *              여기까지만 봄                  서버끼리라 브라우저에 안 보임
  *
+ * 이 그림은 조회(/api/v1/nearby) 하나를 예로 들었을 뿐, 같은 중계(proxyToApi)를
+ * 장소 검색(/api/v1/places) 같은 다른 경로도 그대로 쓴다 — 경로마다 다른 것은
+ * Go 서버로 보낼 경로 문자열뿐이고, 비밀 헤더를 붙이는 이유와 방식은 같다.
+ *
  * 이 파일이 라우트 핸들러(app/api/v1/nearby/route.ts)가 아니라 lib에 있는 이유:
  * 화면 시험은 브라우저 없이 node에서 돈다(web/vitest.config.mts). app/ 안에 판단을
  * 두면 어떤 시험도 그것을 지키지 못한다.
@@ -82,7 +86,7 @@ export async function proxyToApi(
     //
     // 상태 코드가 502인 이유: 못 한 것은 우리가 아니라 우리가 부른 상대다.
     // 원인은 서버 기록에만 남긴다 — 주소 같은 것이 브라우저로 나가면 안 된다.
-    console.error("[proxyNearby] 조회 서버에서 응답을 받지 못했습니다", cause);
+    console.error(`[proxyToApi ${path}] 조회 서버에서 응답을 받지 못했습니다`, cause);
     return errorResponse(
       502,
       UNREACHABLE_ERROR_CODE,
