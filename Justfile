@@ -53,15 +53,28 @@ check:
 deploy-api:
     #!/usr/bin/env bash
     set -euo pipefail
+    cd api
+    # 연결 정보(.vercel/)는 커밋되지 않으므로 새로 내려받은 저장소에는 없다. 그
+    # 상태에서 바로 vercel deploy를 돌리면 CLI가 폴더 이름으로 프로젝트를 찾다가
+    # 이름이 다르면 엉뚱한 프로젝트를 새로 만들어 버린다 — 이 폴더는 이름이 같아
+    # (api = api) 우연히 비껴갔지만, web 쪽에서 실제로 이 문제가 나서(2026-09-20)
+    # 두 쪽 다 이름을 못박아 명시적으로 연결한다.
+    vercel link --yes --project api > /dev/null
     # --archive=tgz는 파일을 하나로 묶어 올린다. 파일 감시 방식으로 하나씩 올리면
     # 잘 안 맞는 환경(예: 샌드박스)에서 걸리는 경우가 있어, 처음부터 안정적인 쪽을 쓴다.
-    cd api && vercel deploy --prod --yes --archive=tgz
+    vercel deploy --prod --yes --archive=tgz
 
 # 화면을 실서비스로 올린다. 서버가 먼저 올라가 있는 상태를 전제로 한다(아래 deploy 참고).
 deploy-web:
     #!/usr/bin/env bash
     set -euo pipefail
-    cd web && vercel deploy --prod --yes --archive=tgz
+    cd web
+    # 실제 Vercel 프로젝트 이름은 random-choice인데 폴더 이름은 web이라 서로 다르다.
+    # 연결 정보 없이 배포하면 CLI가 이름으로 프로젝트를 찾다가 못 찾고 web이라는
+    # 새 프로젝트를 만들어 버린다 — 2026-09-20에 실제로 이 사고가 나서(엉뚱한
+    # 프로젝트에만 배포되고 진짜 서비스는 갱신되지 않음), 매번 명시적으로 연결한다.
+    vercel link --yes --project random-choice > /dev/null
+    vercel deploy --prod --yes --archive=tgz
 
 # 커밋 전 전체 검증 → 서버 → 화면 순서로 실서비스에 올린다.
 deploy: check deploy-api deploy-web
