@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   AVOID_KEY, browserStore, forgetAll, forgetVisit, readAvoidOn, readVisits, recordVisit,
   restoreVisits, RETENTION_DAYS, STORAGE_KEY, writeAvoidOn, type Store,
@@ -26,6 +26,34 @@ function throwingStore(): Store {
 
 const NOW = new Date("2026-09-06T12:00:00Z");
 const daysAgo = (n: number) => new Date(NOW.getTime() - n * 24 * 60 * 60 * 1000);
+
+/**
+ * 시험이 도는 동안 시스템 시계를 NOW에 묶어 둔다.
+ *
+ * **이 파일의 함수들은 시각을 인자로 받되 기본값이 `new Date()`다**(visits.ts).
+ * 그래서 시험이 인자를 빠뜨리면 그 호출만 조용히 실제 시계를 쓰는데, 저장된
+ * 기록의 시각은 NOW 기준이라 둘이 어긋난다. 어긋난 폭이 보관 기간(RETENTION_DAYS)을
+ * 넘는 날부터 그 시험은 실패하기 시작한다.
+ *
+ * 실제로 그 일이 일어났다. "한 줄씩 지운다"가 `forgetVisit(store, "p1")`으로
+ * 인자를 빠뜨린 채 통과하고 있다가, NOW로부터 14일이 지난 2026-09-20 12:00 UTC를
+ * 넘긴 순간부터 실패했다 — 실제 시계 기준의 만료선이 NOW를 지나쳐서, 지우려던
+ * p1뿐 아니라 남아 있어야 할 p2까지 만료로 걸러졌기 때문이다.
+ *
+ * 각 시험이 NOW를 명시적으로 넘기는 것과 중복이 아니다. 인자를 넘기는 것은
+ * 그 시험이 시각과 무관하다는 의도를 드러내는 일이고, 이 고정은 누군가 인자를
+ * 빠뜨렸을 때 몇 주 뒤에 터지는 대신 아무 일도 일어나지 않게 하는 안전망이다.
+ *
+ * 이 파일에는 setTimeout·setInterval을 쓰는 시험이 없으므로 타이머를 통째로
+ * 가짜로 만들어도 걸리는 것이 없다.
+ */
+beforeEach(() => {
+  vi.useFakeTimers();
+  vi.setSystemTime(NOW);
+});
+afterEach(() => {
+  vi.useRealTimers();
+});
 
 describe("기록 저장과 조회", () => {
   it("정한 가게를 기록하고 다시 읽는다", () => {
@@ -123,7 +151,11 @@ describe("기록 저장과 조회", () => {
     const store = fakeStore();
     recordVisit(store, "p1", "가게1", NOW);
     recordVisit(store, "p2", "가게2", NOW);
-    forgetVisit(store, "p1");
+    // 이 시험이 지키는 것은 "지정한 하나만 지운다"이지 만료 처리가 아니다.
+    // 만료 처리는 바로 위의 "지울 때도 보관 기간 지난 기록은 저장소에서 함께
+    // 지운다"가 따로 지킨다. 그래서 여기서는 시각을 NOW로 못박아 시간의
+    // 영향을 아예 없앤다.
+    forgetVisit(store, "p1", NOW);
     expect(readVisits(store, NOW).map((v) => v.placeId)).toEqual(["p2"]);
   });
 
