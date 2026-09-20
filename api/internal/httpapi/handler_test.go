@@ -752,6 +752,31 @@ func TestPlacesRejectsBadQuery(t *testing.T) {
 	}
 }
 
+// 값이 잘못된 요청은 카카오 열쇠가 있든 없든 호출자의 잘못이므로 400이어야 한다.
+// 순서를 뒤집어 설정 확인을 먼저 하면 이 경우가 500(not_configured)으로 뭉뚱그려져,
+// 부르는 쪽은 자기가 무엇을 잘못 보냈는지 알 방법이 없어진다.
+// 음식점 조회는 TestNearbyRejectsBadInputEvenWithoutFinder가 같은 계약을 지킨다.
+func TestPlacesRejectsBadInputEvenWithoutSpotFinder(t *testing.T) {
+	tests := []struct {
+		name   string
+		target string
+	}{
+		{"검색어가 비어 있다", "/api/v1/places"},
+		{"쪽 번호가 올바르지 않다", "/api/v1/places?query=%EA%B2%BD%EC%A3%BC&page=0"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			rec := get(t, NewHandler(&fakeFinder{}, nil, ""), tt.target)
+			if rec.Code != http.StatusBadRequest {
+				t.Fatalf("응답 코드가 %d다. 400이어야 한다 (본문: %s)", rec.Code, rec.Body.String())
+			}
+			if got := decodeError(t, rec)["error"]; got != "invalid_query" {
+				t.Errorf("오류 코드가 %q다. \"invalid_query\"여야 한다", got)
+			}
+		})
+	}
+}
+
 // 비밀값 검사가 이 경로에도 걸려야 한다. 걸리지 않으면 조회 한도를 지키려고
 // 만든 장치에 구멍이 하나 생긴다.
 func TestPlacesRequiresInternalKey(t *testing.T) {
