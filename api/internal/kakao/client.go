@@ -395,31 +395,8 @@ func (c *Client) fetchPage(ctx context.Context, lat, lng float64, radius, page i
 	}
 	defer res.Body.Close()
 
-	if res.StatusCode == http.StatusTooManyRequests {
-		return nil, ErrQuotaExceeded
-	}
-	if res.StatusCode == http.StatusUnauthorized || res.StatusCode == http.StatusForbidden {
-		return nil, fmt.Errorf("%w: 응답 코드 %d", ErrInvalidKey, res.StatusCode)
-	}
-	if res.StatusCode != http.StatusOK {
-		// 카카오는 실패 이유를 본문에 담아 준다. 상태 코드만 남기면 원인 후보가 넓은 채로
-		// 남고, 좌표를 로그에 남기지 않기로 했으므로 요청을 그대로 재구성할 수도 없다.
-		snippet, readErr := io.ReadAll(io.LimitReader(res.Body, errorBodyLimit))
-		if readErr != nil && (ctx.Err() != nil || errors.Is(readErr, context.DeadlineExceeded)) {
-			// 본문을 읽는 도중 상한에 걸렸다. 조회 전체 상한일 수도, 페이지 한 건의
-			// 상한(http.Client.Timeout)일 수도 있다 — 후자는 조회 전체 ctx가 아직
-			// 살아 있어 ctx.Err()가 nil이므로 readErr 자체도 함께 봐야 한다.
-			// 이 사실을 버리면 시간 초과가 그냥 "응답 코드 5xx"로 보여,
-			// 부르는 쪽이 504로 답할 근거를 잃는다.
-			cause := ctx.Err()
-			if cause == nil {
-				cause = readErr
-			}
-			return nil, fmt.Errorf("%w: 응답 코드 %d: 본문을 읽지 못했습니다: %w",
-				ErrUpstream, res.StatusCode, cause)
-		}
-		return nil, fmt.Errorf("%w: 응답 코드 %d: %s", ErrUpstream, res.StatusCode,
-			describeErrorBody(snippet, c.apiKey, query.Get("x"), query.Get("y")))
+	if err := c.statusError(ctx, res, c.apiKey, query.Get("x"), query.Get("y")); err != nil {
+		return nil, err
 	}
 
 	var parsed searchResponse
@@ -427,6 +404,49 @@ func (c *Client) fetchPage(ctx context.Context, lat, lng float64, radius, page i
 		return nil, fmt.Errorf("%w: 응답을 해석하지 못했습니다: %w", ErrUpstream, err)
 	}
 	return &parsed, nil
+}
+
+// statusError는 카카오 응답의 상태 코드를 우리 오류로 옮긴다. 200이면 nil이다.
+//
+// 음식점 조회(fetchPage)와 장소 검색(fetchSpotPage)은 같은 카카오 로컬 API
+// 계열을 부르므로 상태 코드가 뜻하는 바(한도 초과·열쇠 거부·그 밖의 실패)가
+// 두 경로에서 갈라지면 안 된다 — 설계 문서
+// (docs/superpowers/specs/2026-09-20-move-search-location-design.md) 4-6절이
+// "카카오 오류 처리는 지금 /api/v1/nearby가 쓰는 것과 같은 갈래를 그대로 쓴다"고
+// 정한 근거가 이것이다. 상태 코드 매핑을 하나 늘리거나 데드라인 판별을 고칠 때
+// 두 곳에 따로 있으면 한쪽만 고치고 다른 쪽을 놓치는 어긋남이 생긴다.
+//
+// secrets에는 오류 본문에 실려 나가면 안 되는 값을 넘긴다 — 음식점 조회는
+// 열쇠와 좌표를, 장소 검색은 열쇠와 검색어를 넘긴다.
+func (c *Client) statusError(ctx context.Context, res *http.Response, secrets ...string) error {
+	if res.StatusCode == http.StatusOK {
+		return nil
+	}
+	if res.StatusCode == http.StatusTooManyRequests {
+		return ErrQuotaExceeded
+	}
+	if res.StatusCode == http.StatusUnauthorized || res.StatusCode == http.StatusForbidden {
+		return fmt.Errorf("%w: 응답 코드 %d", ErrInvalidKey, res.StatusCode)
+	}
+	// 카카오는 실패 이유를 본문에 담아 준다. 상태 코드만 남기면 원인 후보가 넓은 채로
+	// 남고, 감출 값(좌표·검색어 등)을 로그에 남기지 않기로 했으므로 요청을 그대로
+	// 재구성할 수도 없다.
+	snippet, readErr := io.ReadAll(io.LimitReader(res.Body, errorBodyLimit))
+	if readErr != nil && (ctx.Err() != nil || errors.Is(readErr, context.DeadlineExceeded)) {
+		// 본문을 읽는 도중 상한에 걸렸다. 조회 전체 상한일 수도, 페이지 한 건의
+		// 상한(http.Client.Timeout)일 수도 있다 — 후자는 조회 전체 ctx가 아직
+		// 살아 있어 ctx.Err()가 nil이므로 readErr 자체도 함께 봐야 한다.
+		// 이 사실을 버리면 시간 초과가 그냥 "응답 코드 5xx"로 보여,
+		// 부르는 쪽이 504로 답할 근거를 잃는다.
+		cause := ctx.Err()
+		if cause == nil {
+			cause = readErr
+		}
+		return fmt.Errorf("%w: 응답 코드 %d: 본문을 읽지 못했습니다: %w",
+			ErrUpstream, res.StatusCode, cause)
+	}
+	return fmt.Errorf("%w: 응답 코드 %d: %s", ErrUpstream, res.StatusCode,
+		describeErrorBody(snippet, secrets...))
 }
 
 // toPlace는 카카오의 응답 한 건을 우리 형태로 옮긴다.

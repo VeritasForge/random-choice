@@ -3,9 +3,7 @@ package kakao
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
-	"io"
 	"log/slog"
 	"net/http"
 	"net/url"
@@ -60,9 +58,11 @@ type spotResponse struct {
 // 하므로 그 통제를 화면에 남긴다.
 //
 // **부르는 쪽은 반드시 두 번째 반환값을 보고 멈춰야 한다.** 카카오는 마지막
-// 페이지를 넘겨 요청해도 오류를 주지 않고 마지막 페이지를 그대로 다시 준다
-// (2026-09-20 실측: 15개씩 받을 때 4페이지가 3페이지와 같았다). 이것을 모르고
-// 페이지를 계속 올리면 같은 장소가 목록에 끝없이 쌓인다.
+// 페이지를 넘겨 요청해도 오류를 주지 않고 마지막 페이지를 그대로 다시 준다.
+// 실측 근거: docs/superpowers/specs/2026-09-20-move-search-location-design.md
+// 3-3절 — 15개씩 받을 때 4페이지 첫 항목이 3페이지와 같은 `경주버드파크`였고,
+// 5개씩 받을 때도 10페이지가 9페이지와 같았다. 이것을 모르고 페이지를 계속
+// 올리면 같은 장소가 목록에 끝없이 쌓인다.
 func (c *Client) SearchSpots(ctx context.Context, query string, page int) ([]Spot, bool, error) {
 	parsed, err := c.fetchSpotPage(ctx, query, page)
 	if err != nil {
@@ -104,27 +104,14 @@ func (c *Client) fetchSpotPage(ctx context.Context, query string, page int) (*sp
 	}
 	defer res.Body.Close()
 
-	if res.StatusCode == http.StatusTooManyRequests {
-		return nil, ErrQuotaExceeded
-	}
-	if res.StatusCode == http.StatusUnauthorized || res.StatusCode == http.StatusForbidden {
-		return nil, fmt.Errorf("%w: 응답 코드 %d", ErrInvalidKey, res.StatusCode)
-	}
-	if res.StatusCode != http.StatusOK {
-		snippet, readErr := io.ReadAll(io.LimitReader(res.Body, errorBodyLimit))
-		if readErr != nil && (ctx.Err() != nil || errors.Is(readErr, context.DeadlineExceeded)) {
-			cause := ctx.Err()
-			if cause == nil {
-				cause = readErr
-			}
-			return nil, fmt.Errorf("%w: 응답 코드 %d: 본문을 읽지 못했습니다: %w",
-				ErrUpstream, res.StatusCode, cause)
-		}
-		// 감출 값에 검색어를 넣는다. 사용자가 어디를 찾아봤는지는 좌표만큼은 아니어도
-		// 사생활에 닿는 값이고, 게이트웨이 오류 문서에 요청 주소가 되울려 들어오면
-		// 그대로 로그에 실린다.
-		return nil, fmt.Errorf("%w: 응답 코드 %d: %s", ErrUpstream, res.StatusCode,
-			describeErrorBody(snippet, c.apiKey, query))
+	// 상태 코드 매핑과 오류 본문 처리는 client.go의 statusError를 그대로 쓴다.
+	// 음식점 조회(fetchPage)와 같은 카카오 API 계열이라 오류 규칙이 갈라지면
+	// 안 되기 때문이다 — statusError의 주석에 근거를 적어 두었다.
+	// 감출 값에 검색어를 넣는다. 사용자가 어디를 찾아봤는지는 좌표만큼은 아니어도
+	// 사생활에 닿는 값이고, 게이트웨이 오류 문서에 요청 주소가 되울려 들어오면
+	// 그대로 로그에 실린다.
+	if err := c.statusError(ctx, res, c.apiKey, query); err != nil {
+		return nil, err
 	}
 
 	var parsed spotResponse
