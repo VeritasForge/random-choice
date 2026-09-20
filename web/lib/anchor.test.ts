@@ -111,7 +111,9 @@ describe("기준 위치 문구", () => {
       kind: "spot", name: "해운대블루라인파크 청사포정거장", lat: 35.1, lng: 129.2,
     };
     const label = anchorLabel(anchor);
-    expect(label.length).toBeLessThanOrEqual(20);
+    // 하한(≤)이 아니라 정확한 길이로 검사한다. 자르지 않은 원본도 19자라서
+    // ≤20 검사는 자르기 규칙을 지워도 통과해 버려 아무것도 막지 못한다.
+    expect(label.length).toBe(16);
     expect(label).toContain("…");
     expect(label.endsWith("주변")).toBe(true);
   });
