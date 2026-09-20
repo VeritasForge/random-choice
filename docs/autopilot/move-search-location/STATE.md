@@ -5,7 +5,7 @@
 - 턴: 1
 - 작업 경로: `.claude/worktrees/move-search-location` (브랜치 `worktree-move-search-location`)
 - 설계 문서: `docs/superpowers/specs/2026-09-20-move-search-location-design.md`
-- 계획 파일: 아직 없음 — 다음 단계에서 `docs/superpowers/plans/`에 만든다
+- 계획 파일: `docs/superpowers/plans/2026-09-20-move-search-location.md` (열한 개 작업)
 
 ## 확정된 것
 - [확정] worktree가 로컬 main(`9d3af8a`)까지 따라잡혀 설계 문서를 들고 있다 — 근거: `git merge --ff-only main` 출력과 파일 존재 확인
@@ -24,9 +24,13 @@
 - [보류] 사용자가 친 글자를 저장해도 되는지에 대한 카카오의 공식 답 — 필요한 것: 카카오 문의. 우리 해석은 "사용자 입력이지 카카오 응답이 아니다"이고 설계 문서 6절에 미확인 전제로 적어 두었다
 
 ## 다음에 할 일
-- [ ] writing-plans 스킬로 `docs/superpowers/plans/2026-09-20-move-search-location.md` 작성
-- [ ] subagent-driven-development로 계획 실행
-- [ ] 구현 후 설계 문서의 완료 조건 열 개를 하나씩 검증
+- [x] writing-plans 스킬로 계획 작성 (커밋 `634417c`)
+- [x] 실행 전 충돌 스캔. 두 건을 찾아 고침 (커밋 `36eb4c9`)
+- [ ] 열한 개 작업을 차례로 실행 — 지금 Task 1 진행 중
+- [ ] 마지막 작업(설계 문서 완료 조건 확인)에서 리뷰 스킬·에이전트를 돌린다
+
+**작업 진행은 `.superpowers/sdd/2026-09-20-move-search-location/progress.md`가 갖는다.**
+그 파일이 압축을 견디는 기록이다. 다음 턴은 그것을 먼저 읽는다.
 
 ## 주의
 - **새 시험을 쓰면 그 방어를 일부러 껐을 때 실제로 실패하는지 확인한다.** 이 저장소에서 아무것도 지키지 않는 시험이 열세 번 나왔다. 모양이 늘 같다 — 방어 뒤에 또 다른 방어가 있으면 바깥 방어를 통해 확인하는 시험은 안쪽 방어가 사라져도 초록불이다.
