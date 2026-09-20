@@ -1238,8 +1238,15 @@ export type Anchor =
  */
 export const KEYWORD_KEY = "random-choice.keyword.v1";
 
-/** 기준 위치 줄에 쓸 이름의 최대 길이. 넘으면 줄이고 말줄임표를 붙인다. */
-const MAX_NAME = 16;
+/**
+ * 기준 위치 줄에 쓸 이름의 최대 길이. 넘으면 줄이고 말줄임표를 붙인다.
+ *
+ * 12인 근거: 줄 전체가 `<이름> 주변에서 찾았어요`가 되고 옆에 `바꾸기` 단추가
+ * 붙는다. 실제로 긴 이름인 `해운대블루라인파크 청사포정거장`(16자)을 그대로 두면
+ * 줄이 19자가 되어 좁은 화면에서 단추를 밀어낸다. 12자로 자르면 16자가 된다.
+ * 이 수를 늘리려면 가장 좁은 화면에서 실제로 재 본 뒤에 바꾼다.
+ */
+const MAX_NAME = 12;
 
 /**
  * 마지막으로 친 검색어를 읽는다. 없거나 읽지 못하면 null이다.
@@ -1685,7 +1692,10 @@ export default function SearchScreen({ initialKeyword, onPick, onBack }: Props) 
   const [page, setPage] = useState(0);
   const [isEnd, setIsEnd] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  // 제목과 설명을 함께 들고 있는다. 제목만 남기면 "서버에 연결하지 못했어요"까지만
+  // 보이고 "인터넷 연결을 확인한 뒤 다시 시도해 주세요"라는 다음 행동 안내가 사라진다.
+  // lib/errors.ts가 그 둘을 나눠 두는 까닭이 바로 그것이다.
+  const [error, setError] = useState<{ title: string; description: string } | null>(null);
   // 방금 어떤 글자로 찾았는지. 입력창을 고치는 도중에도 목록의 출처가 바뀌지
   // 않아야 하므로 keyword와 따로 둔다.
   const [searched, setSearched] = useState("");
@@ -1710,7 +1720,8 @@ export default function SearchScreen({ initialKeyword, onPick, onBack }: Props) 
       if (!(cause instanceof NearbyError)) {
         console.error("[SearchScreen] 예상하지 못한 오류", cause);
       }
-      setError(errorNotice(code, message).title);
+      const notice = errorNotice(code, message);
+      setError({ title: notice.title, description: notice.description });
     } finally {
       setLoading(false);
     }
@@ -1762,7 +1773,12 @@ export default function SearchScreen({ initialKeyword, onPick, onBack }: Props) 
         </button>
       </form>
 
-      {error !== null ? <p className="text-muted">{error}</p> : null}
+      {error !== null ? (
+        <div className="w-full rounded-xl border border-line p-3">
+          <p className="font-semibold">{error.title}</p>
+          <p className="text-sm text-muted">{error.description}</p>
+        </div>
+      ) : null}
 
       <ul className="flex w-full flex-col gap-2">
         {spots.map((spot, index) => (
