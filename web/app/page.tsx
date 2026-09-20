@@ -7,7 +7,7 @@ import ResultScreen from "@/components/ResultScreen";
 import SearchScreen from "@/components/SearchScreen";
 import StartScreen from "@/components/StartScreen";
 import VisitsScreen from "@/components/VisitsScreen";
-import { type Anchor, readKeyword, writeKeyword } from "@/lib/anchor";
+import { type Anchor, anchorLabel, readKeyword, writeKeyword } from "@/lib/anchor";
 import {
   fetchNearby,
   NearbyError,
@@ -255,6 +255,22 @@ export default function Home() {
     choose(chosen);
   }
 
+  /**
+   * 결과 화면에서 후보 화면으로 돌아간다.
+   *
+   * 조회를 다시 하지 않는 것이 핵심이다. 다시 하면 카카오를 최대 123번 더 부르고,
+   * 옮긴 위치에서는 그 사이에 검색부터 다시 해야 한다.
+   */
+  function backToCandidates() {
+    if (view.kind !== "result") return;
+    setView({
+      kind: "candidates",
+      anchor: view.anchor,
+      result: view.result,
+      candidates: view.candidates,
+    });
+  }
+
   function reshufflePlaces() {
     if (view.kind !== "result") return;
     // 창을 한 단계 넓힌다. 넓히지 않으면 가까운 여덟 곳 안에서만 계속 돌아,
@@ -366,6 +382,8 @@ export default function Home() {
 
       {view.kind === "candidates" && (
         <CandidateScreen
+          whereLabel={anchorLabel(view.anchor)}
+          onChangeWhere={() => setView({ kind: "search" })}
           candidates={view.candidates}
           onChoose={choose}
           onReshuffle={reshuffle}
@@ -375,6 +393,9 @@ export default function Home() {
 
       {view.kind === "result" && (
         <ResultScreen
+          whereLabel={anchorLabel(view.anchor)}
+          onChangeWhere={() => setView({ kind: "search" })}
+          onBackToCandidates={backToCandidates}
           cuisine={view.cuisine.label}
           places={view.places}
           total={view.pool.length}

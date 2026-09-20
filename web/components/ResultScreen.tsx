@@ -26,6 +26,19 @@ type Props = {
   decidedIds: readonly string[];
   onReshuffle: () => void;
   onRestart: () => void;
+  /**
+   * 무엇을 기준으로 찾았는지 알리는 문구. lib/anchor.ts의 anchorLabel이 만든 것을
+   * 그대로 받는다.
+   *
+   * **이 화면에서 문구를 만들지 않는다.** 긴 이름을 줄이는 규칙이 여기 들어오면
+   * 아무 시험도 그것을 지키지 못한다 — 화면 시험은 브라우저 없이 돌아 .tsx 파일에
+   * 닿지 못하기 때문이다(web/vitest.config.mts).
+   */
+  whereLabel: string;
+  /** 기준 위치를 바꾸러 간다. */
+  onChangeWhere: () => void;
+  /** 후보 고르기 화면으로 돌아간다. 옮긴 위치 그대로 `다시 뽑기`가 이어진다. */
+  onBackToCandidates: () => void;
 };
 
 /**
@@ -171,6 +184,9 @@ export default function ResultScreen({
   decidedIds,
   onReshuffle,
   onRestart,
+  whereLabel,
+  onChangeWhere,
+  onBackToCandidates,
 }: Props) {
   // 방금 "여기로 정했어요"를 누른 가게. 그 자리의 버튼이 "정하신 곳" 글자로 바뀌면서
   // 사라지므로, 포커스를 새 글자로 옮겨 주지 않으면 포커스가 body로 떨어진다.
@@ -207,6 +223,21 @@ export default function ResultScreen({
   return (
     // grow·my-auto로 버튼 묶음을 화면 아래쪽에 붙인다(까닭은 StartScreen에 적어 두었다).
     <section className="rise flex w-full grow flex-col">
+      {/*
+        무엇을 기준으로 찾았는지 맨 위에서 밝힌다. 화면을 몇 번 넘기면 자기가 어느
+        위치 기준으로 보고 있는지 잊기 때문이다. 모양은 바로 아래 회피 안내 상자와
+        같은 결(border-line + bg-surface)을 쓴다 — bg-surface만으로는 화면 바탕과
+        거의 구분되지 않는다(app/globals.css, 아래 배너 주석 참고).
+      */}
+      <div className="flex w-full items-center justify-between gap-2 rounded-xl border border-line bg-surface p-3">
+        {/* truncate로 자르는 것은 눈에 보이는 폭만 다룬다. 글자 수를 줄이는 일은
+            lib/anchor.ts가 이미 했고, 이것은 그보다 좁은 화면을 위한 마지막 방어다. */}
+        <span className="truncate text-sm text-muted">{whereLabel}에서 찾았어요</span>
+        <button type="button" onClick={onChangeWhere} className="btn btn-quiet btn-sm shrink-0">
+          바꾸기
+        </button>
+      </div>
+
       <div className="my-auto flex w-full flex-col items-center gap-5 py-6">
         {/*
           회피가 한 일을 맨 위에서 밝힌다. 조용히 거르면 사용자에게 통제권이 없는 것과
@@ -298,6 +329,9 @@ export default function ResultScreen({
             다른 가게 보기
           </button>
         ) : null}
+        <button type="button" onClick={onBackToCandidates} className="btn btn-quiet w-full">
+          다른 종류 고르기
+        </button>
         <button type="button" onClick={onRestart} className="btn btn-quiet w-full">
           처음부터 다시
         </button>

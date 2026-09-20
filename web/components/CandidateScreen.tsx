@@ -6,6 +6,17 @@ type Props = {
   onChoose: (cuisine: Cuisine) => void;
   onReshuffle: () => void;
   onDecideForMe: () => void;
+  /**
+   * 무엇을 기준으로 찾았는지 알리는 문구. lib/anchor.ts의 anchorLabel이 만든 것을
+   * 그대로 받는다.
+   *
+   * **이 화면에서 문구를 만들지 않는다.** 긴 이름을 줄이는 규칙이 여기 들어오면
+   * 아무 시험도 그것을 지키지 못한다 — 화면 시험은 브라우저 없이 돌아 .tsx 파일에
+   * 닿지 못하기 때문이다(web/vitest.config.mts).
+   */
+  whereLabel: string;
+  /** 기준 위치를 바꾸러 간다. */
+  onChangeWhere: () => void;
 };
 
 export default function CandidateScreen({
@@ -13,10 +24,27 @@ export default function CandidateScreen({
   onChoose,
   onReshuffle,
   onDecideForMe,
+  whereLabel,
+  onChangeWhere,
 }: Props) {
   return (
     // grow·my-auto로 버튼 묶음을 화면 아래쪽에 붙인다(까닭은 StartScreen에 적어 두었다).
     <section className="rise flex w-full grow flex-col">
+      {/*
+        무엇을 기준으로 찾았는지 맨 위에서 밝힌다. 화면을 몇 번 넘기면 자기가 어느
+        위치 기준으로 보고 있는지 잊기 때문이다. 모양은 ResultScreen의 안내 상자와
+        같은 결(border-line + bg-surface)을 쓴다 — bg-surface만으로는 화면 바탕과
+        거의 구분되지 않는다(app/globals.css, ResultScreen.tsx 참고).
+      */}
+      <div className="flex w-full items-center justify-between gap-2 rounded-xl border border-line bg-surface p-3">
+        {/* truncate로 자르는 것은 눈에 보이는 폭만 다룬다. 글자 수를 줄이는 일은
+            lib/anchor.ts가 이미 했고, 이것은 그보다 좁은 화면을 위한 마지막 방어다. */}
+        <span className="truncate text-sm text-muted">{whereLabel}에서 찾았어요</span>
+        <button type="button" onClick={onChangeWhere} className="btn btn-quiet btn-sm shrink-0">
+          바꾸기
+        </button>
+      </div>
+
       <div className="my-auto flex w-full flex-col items-center gap-6 py-8">
         {/* text-balance: 좁은 화면에서 제목 마지막 줄에 한 글자만 남는 것을 막는다. */}
         <h2 className="text-2xl font-bold tracking-tight text-balance">어느 쪽이 끌리나요?</h2>
