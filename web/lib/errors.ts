@@ -87,6 +87,13 @@ const ERROR_TEXT: Record<string, ErrorNotice> = {
     description: "범위는 100m 이상 20km 이하여야 합니다. 페이지를 새로 열어 주세요.",
     retryable: false,
   },
+  // 검색어가 비었거나 쪽 번호가 1 미만일 때 난다(handler.go의 handlePlaces).
+  // retryable이 true인 이유: invalid_radius와 달리 검색어는 사용자가 직접 치는
+  // 값이라, 고쳐 다시 보내면 결과가 달라질 수 있다.
+  // 전제: 이 안내는 위치 검색 화면이 입력창 옆에서 자체적으로 보여 준다는 것을
+  // 전제로 한다. 만약 이 코드가 app/page.tsx의 공용 오류 화면까지 올라가면, 그
+  // 화면의 "다시 시도"는 새 입력을 받지 않고 같은 요청을 되풀이하므로 눌러도
+  // 낫지 않는다 — 그렇게 되면 이 값을 다시 봐야 한다.
   invalid_query: {
     title: "찾을 장소 이름이 올바르지 않아요",
     description: "장소 이름을 적은 뒤 다시 찾아 주세요.",
