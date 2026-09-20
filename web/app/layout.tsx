@@ -2,7 +2,7 @@ import type { Metadata, Viewport } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "오늘 점심 뭐 먹지",
+  title: "오늘은 뭐 먹지?",
   description: "주변 음식점을 보고 무엇을 먹을지 대신 정해 드립니다.",
 };
 

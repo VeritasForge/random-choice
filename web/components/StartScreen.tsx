@@ -16,9 +16,7 @@ export default function StartScreen({ onStart, loading, onShowVisits }: Props) {
     <section className="rise flex w-full grow flex-col">
       <div className="my-auto flex flex-col items-center gap-5 py-8 text-center">
         <h1 className="text-4xl font-bold tracking-tight text-balance break-keep">
-          오늘 점심,
-          <br />
-          제가 정해 드릴게요
+          오늘은 뭐 먹지?
         </h1>
         <p className="max-w-xs text-base leading-relaxed text-muted">
           주변에 있는 음식점을 보고 <strong className="font-semibold">무엇을 먹을지</strong>부터
