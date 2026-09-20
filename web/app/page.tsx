@@ -4,8 +4,10 @@ import { useEffect, useRef, useState } from "react";
 import CandidateScreen from "@/components/CandidateScreen";
 import Notice from "@/components/Notice";
 import ResultScreen from "@/components/ResultScreen";
+import SearchScreen from "@/components/SearchScreen";
 import StartScreen from "@/components/StartScreen";
 import VisitsScreen from "@/components/VisitsScreen";
+import { type Anchor, readKeyword, writeKeyword } from "@/lib/anchor";
 import {
   fetchNearby,
   NearbyError,
@@ -21,6 +23,7 @@ import { pickAvoiding, pickDistinct, pickOne } from "@/lib/pick";
 import { pickPlaces, WINDOW_STEP } from "@/lib/places";
 import { DEFAULT_RADIUS, WIDER_RADIUS } from "@/lib/radius";
 import { avoidNotice, canRestore } from "@/lib/reasons";
+import { type Spot } from "@/lib/spots";
 import {
   browserStore,
   forgetAll,
@@ -47,9 +50,17 @@ const PLACE_COUNT = 4;
 type View =
   | { kind: "start" }
   | { kind: "loading" }
-  | { kind: "candidates"; result: NearbyResult; candidates: Cuisine[] }
+  | { kind: "search" }
+  | { kind: "candidates"; anchor: Anchor; result: NearbyResult; candidates: Cuisine[] }
   | {
       kind: "result";
+      anchor: Anchor;
+      /**
+       * 후보 화면으로 되돌아갈 때 쓴다(Task 9의 `다른 종류 고르기`).
+       * 들고 있지 않으면 조회를 다시 해야 하는데, 그것은 카카오를 최대 123번 더 부르는 일이다.
+       */
+      result: NearbyResult;
+      candidates: Cuisine[];
       /**
        * 고른 종류의 가게 **전부**. 회피를 적용하기 **전**의 목록이다.
        * 회피를 껐을 때 빠졌던 가게를 되돌리려면 이것이 있어야 한다 —
@@ -74,7 +85,11 @@ type View =
       released: boolean;
     }
   | { kind: "visits" }
-  | { kind: "empty" }
+  /**
+   * 빈 결과에도 기준점을 들고 있어야 한다. 들고 있지 않으면 `다시 찾아보기`가
+   * 사용자가 서 있는 자리로 되돌아가, 경주를 찾던 사람이 갑자기 집 주변을 보게 된다.
+   */
+  | { kind: "empty"; anchor: Anchor }
   | { kind: "error"; code: string; message: string };
 
 /**
@@ -105,6 +120,10 @@ export default function Home() {
   // View 밖에 두는 이유는 visits·avoidOn과 같다: View는 화면을 옮길 때마다
   // 통째로 갈아 끼우는 값이다.
   const [undoable, setUndoable] = useState<Visit[]>([]);
+  // 마지막으로 찾았던 글자. visits·avoidOn과 같은 이유로 View 밖에 둔다 —
+  // View는 화면을 옮길 때마다 통째로 갈아 끼우는 값이라, 그 안에 두면
+  // 화면 하나 지나는 것만으로 설정이 날아간다.
+  const [lastKeyword, setLastKeyword] = useState("");
 
   const mainRef = useRef<HTMLElement>(null);
   const screenName = screenNameOf(view);
@@ -125,6 +144,7 @@ export default function Home() {
     /* eslint-disable react-hooks/set-state-in-effect -- 까닭은 바로 위에 적었다 */
     setVisits(readVisits(store));
     setAvoidOn(readAvoidOn(store));
+    setLastKeyword(readKeyword(store) ?? "");
     /* eslint-enable react-hooks/set-state-in-effect */
   }, [store]);
 
@@ -138,19 +158,24 @@ export default function Home() {
     mainRef.current?.focus();
   }, [screenName]);
 
-  async function start(radius: number = DEFAULT_RADIUS) {
+  async function start(anchor: Anchor, radius: number = DEFAULT_RADIUS) {
     setView({ kind: "loading" });
 
     try {
-      const coords = await getCurrentPosition();
+      // 기준점이 옮긴 자리면 브라우저 위치를 묻지 않는다. 물으면 위치 권한을
+      // 거부한 사람이 검색으로 들어온 길에서도 막히고, 허용한 사람도 쓸데없이
+      // 기다린다. 이 갈림이 이 기능의 핵심이다.
+      const coords =
+        anchor.kind === "here" ? await getCurrentPosition() : { lat: anchor.lat, lng: anchor.lng };
       const result = await fetchNearby(coords.lat, coords.lng, radius);
       const cuisines = distinctById(result.cuisines);
       if (cuisines.length === 0) {
-        setView({ kind: "empty" });
+        setView({ kind: "empty", anchor });
         return;
       }
       setView({
         kind: "candidates",
+        anchor,
         result,
         candidates: pickDistinct(cuisines, CANDIDATE_COUNT, Math.random),
       });
@@ -174,6 +199,19 @@ export default function Home() {
     }
   }
 
+  /**
+   * 검색 화면에서 장소를 골랐을 때.
+   *
+   * **저장하는 것은 사용자가 친 글자뿐이다.** 고른 장소의 이름과 좌표는 이번 조회에만
+   * 쓰고 브라우저에 남기지 않는다(설계 문서 4-5절). 그래서 다음에 열었을 때는
+   * `경주로 다시 찾기`가 보이고, 누르면 검색 화면으로 가서 한 번 더 고르게 된다.
+   */
+  function pickSpot(spot: Spot, keyword: string) {
+    writeKeyword(store, keyword);
+    setLastKeyword(keyword);
+    start({ kind: "spot", name: spot.name, lat: spot.lat, lng: spot.lng });
+  }
+
   function reshuffle() {
     if (view.kind !== "candidates") return;
     const cuisines = distinctById(view.result.cuisines);
@@ -190,6 +228,11 @@ export default function Home() {
     const { places: pool, removed, released } = avoidVisited(all, visits, avoidOn);
     setView({
       kind: "result",
+      // 여기는 객체를 통째로 새로 만드는 자리다. 이 세 줄을 빠뜨리면
+      // 결과 화면에서 기준 위치 줄이 사라지고 후보로 돌아갈 수도 없다.
+      anchor: view.anchor,
+      result: view.result,
+      candidates: view.candidates,
       cuisine,
       all,
       pool,
@@ -304,9 +347,20 @@ export default function Home() {
     >
       {(view.kind === "start" || view.kind === "loading") && (
         <StartScreen
-          onStart={() => start()}
+          lastKeyword={lastKeyword}
+          onResume={() => setView({ kind: "search" })}
+          onStartHere={() => start({ kind: "here" })}
+          onStartElsewhere={() => setView({ kind: "search" })}
           loading={view.kind === "loading"}
           onShowVisits={() => setView({ kind: "visits" })}
+        />
+      )}
+
+      {view.kind === "search" && (
+        <SearchScreen
+          initialKeyword={lastKeyword}
+          onPick={pickSpot}
+          onBack={() => setView({ kind: "start" })}
         />
       )}
 
@@ -362,7 +416,8 @@ export default function Home() {
         <Notice
           title="주변에서 음식점을 찾지 못했어요"
           description="범위를 넓혀서 다시 찾아볼까요?"
-          actions={[{ label: "다시 찾아보기", onClick: () => start(WIDER_RADIUS) }]}
+          // view.anchor를 넘긴다. 넘기지 않으면 경주를 찾던 사람이 집 주변으로 돌아간다.
+          actions={[{ label: "다시 찾아보기", onClick: () => start(view.anchor, WIDER_RADIUS) }]}
         />
       )}
 
@@ -377,7 +432,7 @@ export default function Home() {
           // 내일 다시)을 이미 담고 있다.
           actions={
             notice.retryable
-              ? [{ label: "다시 시도", onClick: () => start() }]
+              ? [{ label: "다시 시도", onClick: () => start({ kind: "here" }) }]
               : []
           }
         />

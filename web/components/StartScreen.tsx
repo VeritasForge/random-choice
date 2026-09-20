@@ -1,10 +1,21 @@
 type Props = {
-  onStart: () => void;
+  /** 마지막으로 찾았던 글자. 빈 문자열이면 `~로 다시 찾기` 단추를 그리지 않는다. */
+  lastKeyword: string;
+  onResume: () => void;
+  onStartHere: () => void;
+  onStartElsewhere: () => void;
   loading: boolean;
   onShowVisits: () => void;
 };
 
-export default function StartScreen({ onStart, loading, onShowVisits }: Props) {
+export default function StartScreen({
+  lastKeyword,
+  onResume,
+  onStartHere,
+  onStartElsewhere,
+  loading,
+  onShowVisits,
+}: Props) {
   return (
     /*
       grow와 my-auto를 함께 쓰는 이유: 주요 버튼을 화면 아래쪽에 두기 위해서다.
@@ -26,6 +37,21 @@ export default function StartScreen({ onStart, loading, onShowVisits }: Props) {
 
       <div className="flex w-full flex-col items-center gap-3">
         {/*
+          조건부 그리기에 && 가 아니라 삼항 연산자를 쓴다. `lastKeyword && <button>`은
+          빈 문자열일 때 ""를 그대로 그려 넣는다. 지금은 눈에 보이지 않지만, 이 자리가
+          수를 담는 값으로 바뀌면 화면에 0이 뜬다.
+        */}
+        {lastKeyword !== "" ? (
+          <button
+            type="button"
+            onClick={loading ? undefined : onResume}
+            aria-disabled={loading}
+            className="btn btn-primary w-full"
+          >
+            {lastKeyword}로 다시 찾기
+          </button>
+        ) : null}
+        {/*
           disabled 대신 aria-disabled를 쓰는 이유: 방금 누른 버튼을 disabled로 만들면
           브라우저가 그 버튼의 포커스를 떨어뜨린다. 키보드나 화면 낭독기를 쓰는 사람은
           자기 위치를 잃고, 무슨 일이 시작됐는지도 듣지 못한다.
@@ -34,12 +60,20 @@ export default function StartScreen({ onStart, loading, onShowVisits }: Props) {
         */}
         <button
           type="button"
-          onClick={loading ? undefined : onStart}
+          onClick={loading ? undefined : onStartHere}
           aria-disabled={loading}
           aria-busy={loading}
-          className="btn btn-primary w-full"
+          className={lastKeyword !== "" ? "btn btn-quiet w-full" : "btn btn-primary w-full"}
         >
-          {loading ? "주변을 살펴보는 중…" : "위치 허용하고 시작하기"}
+          {loading ? "주변을 살펴보는 중…" : "지금 있는 곳에서 찾기"}
+        </button>
+        <button
+          type="button"
+          onClick={loading ? undefined : onStartElsewhere}
+          aria-disabled={loading}
+          className="btn btn-quiet w-full"
+        >
+          다른 곳에서 찾기
         </button>
         {/*
           조회 중에는 누르지 못하게 막는다. 막지 않으면 기록 화면으로 넘어간 뒤
