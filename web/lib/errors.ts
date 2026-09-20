@@ -87,6 +87,11 @@ const ERROR_TEXT: Record<string, ErrorNotice> = {
     description: "범위는 100m 이상 20km 이하여야 합니다. 페이지를 새로 열어 주세요.",
     retryable: false,
   },
+  invalid_query: {
+    title: "찾을 장소 이름이 올바르지 않아요",
+    description: "장소 이름을 적은 뒤 다시 찾아 주세요.",
+    retryable: true,
+  },
   not_configured: {
     title: "서버 준비가 아직 안 됐어요",
     description:
