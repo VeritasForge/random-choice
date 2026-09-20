@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  anchorLabel, forgetKeyword, KEYWORD_KEY, readKeyword, writeKeyword, type Anchor,
+  anchorLabel, KEYWORD_KEY, readKeyword, writeKeyword, type Anchor,
 } from "./anchor";
 import type { Store } from "./visits";
 
@@ -53,24 +53,15 @@ describe("검색어 저장", () => {
     expect(store.data[KEYWORD_KEY]).toBeUndefined();
   });
 
-  it("지우면 없어진다", () => {
-    const store = fakeStore();
-    writeKeyword(store, "경주");
-    forgetKeyword(store);
-    expect(readKeyword(store)).toBeNull();
-  });
-
   it("저장소가 null이어도 터지지 않는다", () => {
     expect(readKeyword(null)).toBeNull();
     expect(() => writeKeyword(null, "경주")).not.toThrow();
-    expect(() => forgetKeyword(null)).not.toThrow();
   });
 
   it("저장소가 예외를 던져도 터지지 않는다", () => {
     const store = throwingStore();
     expect(readKeyword(store)).toBeNull();
     expect(() => writeKeyword(store, "경주")).not.toThrow();
-    expect(() => forgetKeyword(store)).not.toThrow();
   });
 
   // 문자열이 아닌 값이 들어 있으면 없는 것으로 본다. 사람이 손으로 고쳤거나

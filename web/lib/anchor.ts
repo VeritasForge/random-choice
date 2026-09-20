@@ -74,14 +74,15 @@ export function writeKeyword(store: Store | null, keyword: string): void {
   }
 }
 
-export function forgetKeyword(store: Store | null): void {
-  if (store === null) return;
-  try {
-    store.removeItem(KEYWORD_KEY);
-  } catch {
-    // 지우지 못했다. 사용자가 할 수 있는 일이 없다.
-  }
-}
+/**
+ * 검색어를 완전히 지우는 함수를 일부러 두지 않는다.
+ *
+ * 검색어는 조회 기록이 아니라 회피 스위치(random-choice.avoid.v1)와 같은 성격의
+ * **사용자 설정**이다(위 KEYWORD_KEY 주석). 기록 화면의 `전체 지우기`가 회피
+ * 스위치를 건드리지 않는 것과 같은 이유로, 검색어도 그 자리에 묶지 않는다.
+ * 완전히 비우는 길이 없는 것은 회피 스위치도 마찬가지이고, 다른 곳을 찾으면
+ * 그 글자로 덮어써지므로 바꾸는 길 자체는 있다.
+ */
 
 /**
  * 후보·결과 화면 위쪽에 그릴 기준 위치 문구.

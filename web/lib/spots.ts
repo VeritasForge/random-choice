@@ -41,3 +41,17 @@ export function appendSpots(existing: readonly Spot[], incoming: readonly Spot[]
   }
   return merged;
 }
+
+/**
+ * `더 보기`를 누를 때 카카오에 보낼 검색어를 정한다.
+ *
+ * 1쪽(새로 찾기)은 지금 입력창의 글자(keyword)를 쓰고, 2쪽 이상(더 보기)은
+ * 방금 찾았던 글자(searched)를 쓴다. **언제나 keyword를 쓰면 안 된다** —
+ * 사용자가 목록을 보면서 입력창을 다른 글자로 고친 뒤(아직 `찾기`를 누르지
+ * 않은 채) `더 보기`를 누르면, 새 글자의 다음 쪽이 기존 목록 뒤에 이어 붙어
+ * 서로 다른 두 검색어의 결과가 한 목록에 섞이고, 그 뒤로 골라 저장되는 글자도
+ * 화면에 보이던 검색어가 아니라 입력창의 새 글자가 된다.
+ */
+export function queryForPage(page: number, keyword: string, searched: string): string {
+  return page === 1 ? keyword.trim() : searched;
+}

@@ -49,7 +49,18 @@ const PLACE_COUNT = 4;
  */
 type View =
   | { kind: "start" }
-  | { kind: "loading" }
+  | {
+      kind: "loading";
+      /**
+       * 이 조회를 어느 화면에서 시작했는가. screenNameOf가 이 값을 읽어
+       * 로딩 중에도 그 화면을 계속 보여 준다. 시작 화면과 검색 화면 둘 다에서
+       * 조회가 시작될 수 있는데(검색 화면은 장소를 고르는 순간 조회가 시작된다),
+       * 하나로 뭉뚱그리면 검색 화면에서 조회를 시작했을 때도 시작 화면이
+       * 잠깐 떴다가 사라진다 — 그 화면의 버튼은 전부 죽어 있어 사용자가
+       * 아무것도 할 수 없는 채로 몇 초를 기다리게 된다.
+       */
+      from: "start" | "search";
+    }
   | {
       kind: "search";
       /**
@@ -100,16 +111,22 @@ type View =
    * 사용자가 서 있는 자리로 되돌아가, 경주를 찾던 사람이 갑자기 집 주변을 보게 된다.
    */
   | { kind: "empty"; anchor: Anchor }
-  | { kind: "error"; code: string; message: string };
+  /**
+   * 오류 화면에도 기준점을 들고 있어야 한다. 들고 있지 않으면 "다시 시도"가
+   * 언제나 브라우저 위치로 조회한다 — 옮긴 위치에서 조회가 실패한 사람이
+   * "다시 시도"를 눌러도 자기가 찾던 곳이 아니라 사용자가 서 있는 자리로
+   * 돌아가고, 위치 권한을 거부한 사람은 그 순간 권한 요청 창까지 보게 된다.
+   */
+  | { kind: "error"; anchor: Anchor; code: string; message: string };
 
 /**
- * 화면 단위 이름. start와 loading은 같은 화면의 두 상태이므로 하나로 본다 —
- * 시작 화면에서 로딩이 시작될 때 방금 누른 버튼에서 포커스를 빼앗지 않기 위한 것이다.
- * 빈 결과·오류 화면에서 다시 시도를 누를 때는 화면 이름이 start로 바뀌므로
- * 포커스가 main으로 옮겨 간다 — 그쪽은 이 규칙의 적용 대상이 아니다.
+ * 화면 단위 이름. loading은 그 조회를 시작한 화면(view.from)과 같은 화면으로 본다 —
+ * 조회가 시작될 때 방금 누른 버튼(또는 방금 고른 장소)에서 포커스를 빼앗지 않기
+ * 위한 것이다. 빈 결과·오류 화면에서 다시 시도를 누를 때는 화면 이름이 start로
+ * 바뀌므로 포커스가 main으로 옮겨 간다 — 그쪽은 이 규칙의 적용 대상이 아니다.
  */
 function screenNameOf(view: View): string {
-  return view.kind === "loading" ? "start" : view.kind;
+  return view.kind === "loading" ? view.from : view.kind;
 }
 
 export default function Home() {
@@ -168,8 +185,12 @@ export default function Home() {
     mainRef.current?.focus();
   }, [screenName]);
 
-  async function start(anchor: Anchor, radius: number = DEFAULT_RADIUS) {
-    setView({ kind: "loading" });
+  async function start(
+    anchor: Anchor,
+    radius: number = DEFAULT_RADIUS,
+    from: "start" | "search" = "start",
+  ) {
+    setView({ kind: "loading", from });
 
     try {
       // 기준점이 옮긴 자리면 브라우저 위치를 묻지 않는다. 물으면 위치 권한을
@@ -197,15 +218,17 @@ export default function Home() {
         // 상태 코드를 콘솔에 남긴다. 남기지 않으면 "프록시가 목적지에 못 닿았다"와
         // "서버가 스스로 500을 냈다"의 구분이 던져진 다음 프레임에서 사라진다.
         console.error("[start] 조회 실패", error.code, error.status);
-        setView({ kind: "error", code: error.code, message: error.message });
+        setView({ kind: "error", anchor, code: error.code, message: error.message });
         return;
       }
       if (error instanceof GeoError) {
-        setView({ kind: "error", code: error.code, message: "" });
+        // GeoError는 브라우저 위치를 물었을 때만 나므로(위 anchor.kind === "here"
+        // 갈래), 여기 anchor는 항상 {kind:"here"}다.
+        setView({ kind: "error", anchor, code: error.code, message: "" });
         return;
       }
       console.error("[start] 예상하지 못한 오류", error);
-      setView({ kind: "error", code: "unexpected", message: "" });
+      setView({ kind: "error", anchor, code: "unexpected", message: "" });
     }
   }
 
@@ -219,7 +242,9 @@ export default function Home() {
   function pickSpot(spot: Spot, keyword: string) {
     writeKeyword(store, keyword);
     setLastKeyword(keyword);
-    start({ kind: "spot", name: spot.name, lat: spot.lat, lng: spot.lng });
+    // from: "search" — 검색 화면에서 고른 것이므로 조회 중에도 검색 화면을
+    // 그대로 보여 준다(위 View의 "loading" 갈래 주석).
+    start({ kind: "spot", name: spot.name, lat: spot.lat, lng: spot.lng }, DEFAULT_RADIUS, "search");
   }
 
   function reshuffle() {
@@ -371,7 +396,9 @@ export default function Home() {
       */
       className="mx-auto flex min-h-dvh w-full max-w-md flex-col items-center justify-center gap-8 p-6 pb-[max(1.5rem,env(safe-area-inset-bottom))] focus:outline-none"
     >
-      {(view.kind === "start" || view.kind === "loading") && (
+      {/* loading은 그 조회를 시작한 화면에서만 그린다(from). start에서 시작한
+          조회가 아니면 여기서는 아무것도 그리지 않는다 — 검색 화면 쪽 조건이 맡는다. */}
+      {(view.kind === "start" || (view.kind === "loading" && view.from === "start")) && (
         <StartScreen
           lastKeyword={lastKeyword}
           // `~로 다시 찾기`는 그 글자로 다시 찾겠다는 버튼이므로 지난 검색어를 채운다.
@@ -385,11 +412,20 @@ export default function Home() {
         />
       )}
 
-      {view.kind === "search" && (
+      {/*
+        검색 화면에서 장소를 고르면(pickSpot) 조회가 시작되지만, 그 조회는 시작
+        화면이 아니라 검색 화면에서 비롯된 것이다. 위 StartScreen 조건으로 넘기면
+        조회 중에 검색 화면이 사라지고 아무 단추도 살아있지 않은 시작 화면이
+        잠깐 뜬다 — 사용자가 방금 고른 장소도, 방금 보던 목록도 사라진 것처럼
+        보인다. 그래서 loading.from이 "search"인 동안은 이 화면을 계속 그리고,
+        picking으로 넘겨 목록·단추를 잠근다.
+      */}
+      {(view.kind === "search" || (view.kind === "loading" && view.from === "search")) && (
         <SearchScreen
-          initialKeyword={view.initialKeyword}
+          initialKeyword={view.kind === "search" ? view.initialKeyword : ""}
           onPick={pickSpot}
           onBack={() => setView({ kind: "start" })}
+          picking={view.kind === "loading"}
         />
       )}
 
@@ -467,9 +503,14 @@ export default function Home() {
           // 무엇이든 누를 것을 주면 방금 고친 빈 결과 화면과 같은 막다른 길이 된다.
           // 그런 오류의 안내 문구는 화면 밖에서 할 일(주소를 https로, 관리자에게 알리기,
           // 내일 다시)을 이미 담고 있다.
+          // view.anchor를 넘긴다. 넘기지 않으면(예전처럼 {kind:"here"}로 고정하면)
+          // 옮긴 위치에서 조회하다 실패한 사람이 "다시 시도"를 눌러도 그 위치가
+          // 아니라 사용자가 서 있는 자리로 조회하고, 위치 권한을 거부한 사람은
+          // 그 순간 권한 요청 창까지 보게 된다(위 empty 화면의 "다시 찾아보기"와
+          // 같은 함정).
           actions={
             notice.retryable
-              ? [{ label: "다시 시도", onClick: () => start({ kind: "here" }) }]
+              ? [{ label: "다시 시도", onClick: () => start(view.anchor) }]
               : []
           }
         />

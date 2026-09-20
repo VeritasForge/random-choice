@@ -3,16 +3,24 @@
 import { useState } from "react";
 import { fetchSpots, NearbyError } from "@/lib/api";
 import { errorNotice } from "@/lib/errors";
-import { appendSpots, type Spot } from "@/lib/spots";
+import { appendSpots, queryForPage, type Spot } from "@/lib/spots";
 
 type Props = {
   /** 시작 화면의 `~로 다시 찾기`로 들어왔을 때 입력창에 채워 둘 글자. */
   initialKeyword: string;
   onPick: (spot: Spot, keyword: string) => void;
   onBack: () => void;
+  /**
+   * 장소를 골라 그 좌표로 음식점을 조회하는 중인가(web/app/page.tsx의
+   * `{kind:"loading", from:"search"}`). 이 화면은 그동안에도 계속 그려지므로
+   * (그렇지 않으면 시작 화면이 잠깐 끼어드는 문제가 있었다), 목록·입력창·단추를
+   * 여기서 직접 잠가야 한다 — 잠그지 않으면 조회가 끝나기 전에 다른 장소를
+   * 또 고를 수 있어 조회 두 개가 동시에 돈다.
+   */
+  picking: boolean;
 };
 
-export default function SearchScreen({ initialKeyword, onPick, onBack }: Props) {
+export default function SearchScreen({ initialKeyword, onPick, onBack, picking }: Props) {
   const [keyword, setKeyword] = useState(initialKeyword);
   const [spots, setSpots] = useState<Spot[]>([]);
   const [page, setPage] = useState(0);
@@ -27,8 +35,10 @@ export default function SearchScreen({ initialKeyword, onPick, onBack }: Props) 
   const [searched, setSearched] = useState("");
 
   async function search(nextPage: number) {
-    const trimmed = keyword.trim();
-    if (trimmed === "" || loading) return;
+    // 2쪽 이상(더 보기)은 입력창이 아니라 방금 찾았던 글자를 써야 한다 —
+    // 그 이유는 web/lib/spots.ts의 queryForPage에 적어 두었다.
+    const trimmed = queryForPage(nextPage, keyword, searched);
+    if (trimmed === "" || loading || picking) return;
     setLoading(true);
     setError(null);
     try {
@@ -54,10 +64,14 @@ export default function SearchScreen({ initialKeyword, onPick, onBack }: Props) 
   }
 
   return (
-    <section className="rise flex w-full grow flex-col gap-4">
+    <section className="rise flex w-full grow flex-col gap-4" aria-busy={picking}>
       <button
         type="button"
-        onClick={onBack}
+        // 조회 중에는 뒤로 가지 못하게 막는다. 막지 않으면 그 사이 조회가
+        // 끝나 page.tsx가 이 화면을 candidates·error로 갈아 치우면서, 사용자가
+        // 스스로 되돌아간 시작 화면을 다시 빼앗는다.
+        onClick={picking ? undefined : onBack}
+        aria-disabled={picking}
         className="btn self-start text-muted underline underline-offset-4"
       >
         돌아가기
@@ -92,7 +106,8 @@ export default function SearchScreen({ initialKeyword, onPick, onBack }: Props) 
         />
         <button
           type="submit"
-          aria-disabled={loading || keyword.trim() === ""}
+          aria-disabled={loading || picking || keyword.trim() === ""}
+          aria-busy={loading}
           className="btn btn-primary shrink-0"
         >
           {loading ? "찾는 중…" : "찾기"}
@@ -116,7 +131,11 @@ export default function SearchScreen({ initialKeyword, onPick, onBack }: Props) 
           <li key={spot.id !== "" ? spot.id : `i-${index}`}>
             <button
               type="button"
-              onClick={() => onPick(spot, searched)}
+              // 조회 중에는 다른 장소를 고르지 못하게 막는다. 막지 않으면 조회
+              // 두 개가 동시에 돌고, 나중에 끝난 쪽이 화면을 차지해 방금 고른
+              // 장소가 아닌 엉뚱한 결과가 뜬다.
+              onClick={picking ? undefined : () => onPick(spot, searched)}
+              aria-disabled={picking}
               className="row flex w-full items-center justify-between gap-3 rounded-xl border border-line p-3 text-left"
             >
               <span className="min-w-0">
@@ -145,8 +164,9 @@ export default function SearchScreen({ initialKeyword, onPick, onBack }: Props) 
       {spots.length > 0 && !isEnd ? (
         <button
           type="button"
-          onClick={loading ? undefined : () => void search(page + 1)}
-          aria-disabled={loading}
+          onClick={loading || picking ? undefined : () => void search(page + 1)}
+          aria-disabled={loading || picking}
+          aria-busy={loading}
           className="btn btn-quiet w-full"
         >
           더 보기
@@ -171,11 +191,13 @@ export default function SearchScreen({ initialKeyword, onPick, onBack }: Props) 
         이 영역이 없으면 무엇이 달라졌는지 들을 방법이 없다.
       */}
       <p role="status" aria-live="polite" className="sr-only">
-        {loading
-          ? "장소를 찾고 있습니다."
-          : spots.length > 0
-            ? `${spots.length}곳을 찾았습니다.`
-            : ""}
+        {picking
+          ? "선택한 곳 주변 음식점을 찾고 있습니다."
+          : loading
+            ? "장소를 찾고 있습니다."
+            : spots.length > 0
+              ? `${spots.length}곳을 찾았습니다.`
+              : ""}
       </p>
     </section>
   );

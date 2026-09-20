@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { appendSpots, type Spot } from "./spots";
+import { appendSpots, queryForPage, type Spot } from "./spots";
 
 const spot = (id: string, name = `장소${id}`): Spot => ({
   id, name, address: "주소", category: "", lat: 35.8, lng: 129.2,
@@ -55,5 +55,26 @@ describe("검색 결과 이어 붙이기", () => {
   it("들어온 목록 안에 중복이 있어도 하나만 남는다", () => {
     const got = appendSpots([], [spot("a"), spot("a"), spot("b")]);
     expect(got.map((s) => s.id)).toEqual(["a", "b"]);
+  });
+});
+
+describe("더 보기 검색어 정하기", () => {
+  it("1쪽은 지금 입력창의 글자를 쓴다", () => {
+    expect(queryForPage(1, "부산", "경주")).toBe("부산");
+  });
+
+  it("1쪽 입력창 앞뒤 공백은 뗀다", () => {
+    expect(queryForPage(1, "  부산  ", "경주")).toBe("부산");
+  });
+
+  /**
+   * **이 시험이 이 함수의 존재 이유다.** `경주`로 찾아 목록을 본 뒤 입력창만
+   * `부산`으로 고치고(`찾기`는 누르지 않고) `더 보기`를 누르는 상황을 흉내 낸다.
+   * 여기서 입력창(keyword) 글자를 쓰면 `부산`의 2쪽이 `경주`의 1쪽 뒤에 이어
+   * 붙어 서로 다른 검색어의 결과가 한 목록에 섞인다.
+   */
+  it("2쪽 이상은 입력창이 아니라 방금 찾았던 글자를 쓴다", () => {
+    expect(queryForPage(2, "부산", "경주")).toBe("경주");
+    expect(queryForPage(3, "부산", "경주")).toBe("경주");
   });
 });
