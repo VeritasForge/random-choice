@@ -392,9 +392,10 @@ describe("장소 검색", () => {
     expect(got.isEnd).toBe(false);
   });
 
-  // 모양을 확인하지 않고 단정하면 계약이 어긋난 순간이 아니라 한참 뒤
-  // 화면이 그 값을 쓰는 자리에서 조용히 망가진다. fetchNearby와 같은 규칙이다.
-  it("응답 모양이 다르면 malformed_response로 던진다", async () => {
+  // 이 시험은 최상위 모양(spots가 배열인지, isEnd가 boolean인지)만 확인한다.
+  // 장소 한 건 안의 개별 항목(id·name·address·category·lat·lng)은 이것으로
+  // 검증되지 않는다 — 아래 "장소 검색 — 응답 원소 검사 항목별"에서 하나씩 확인한다.
+  it("최상위 응답 모양이 다르면 malformed_response로 던진다", async () => {
     for (const bad of [
       '{"spots":"목록아님","isEnd":true}',
       '{"spots":[{"id":"s1"}],"isEnd":true}',
@@ -417,5 +418,58 @@ describe("장소 검색", () => {
   it("서버에 닿지 못하면 network_error로 던진다", async () => {
     vi.stubGlobal("fetch", async () => { throw new TypeError("fetch failed"); });
     await expect(fetchSpots("경주", 1)).rejects.toMatchObject({ code: "network_error" });
+  });
+});
+
+describe("장소 검색 — 응답 원소 검사 항목별", () => {
+  // 위 "최상위 응답 모양이 다르면…" 시험의 나쁜 값 5개는 실제로는 세 갈래
+  // (spots가 배열이 아님·isEnd가 boolean이 아님·spots 자체가 없음)로만 나뉘고,
+  // 장소 한 건 안의 address·category·lat·lng은 그 값들 중 어느 것으로도
+  // 독립적으로 검증되지 않는다. 여러 항목을 한꺼번에 뺀 자료로만 시험하면
+  // 먼저 걸리는 검사 하나가 나머지를 가리기 때문이다. fetchNearby가 쓰는 것과
+  // 같은 방식으로, 온전한 장소 한 건을 기준으로 두고 항목을 하나씩만 어긋뜨린다.
+  const GOOD_SPOT = {
+    id: "s1",
+    name: "황리단길",
+    address: "경북",
+    category: "관광명소",
+    lat: 35.8,
+    lng: 129.2,
+  };
+
+  const cases: Record<string, Record<string, unknown>> = {
+    "식별자가 문자열이 아니다": { id: 1 },
+    "이름이 없다": { name: undefined },
+    "이름이 빈 문자열이다": { name: "" },
+    "주소가 없다": { address: undefined },
+    "주소가 문자열이 아니다": { address: 1 },
+    "종류가 없다": { category: undefined },
+    "종류가 문자열이 아니다": { category: 1 },
+    "위도가 없다": { lat: undefined },
+    "위도가 숫자가 아니다": { lat: "35.8" },
+    "경도가 없다": { lng: undefined },
+    "경도가 숫자가 아니다": { lng: "129.2" },
+  };
+
+  for (const [label, patch] of Object.entries(cases)) {
+    it(`장소에 ${label} — malformed_response`, async () => {
+      respondWith(200, { spots: [{ ...GOOD_SPOT, ...patch }], isEnd: true });
+      await expect(fetchSpots("경주", 1)).rejects.toMatchObject({ code: "malformed_response" });
+    });
+  }
+
+  it("온전한 장소는 그대로 통과시킨다", async () => {
+    // 위 검사들이 정상 응답까지 막지 않는지 확인하는 대조군이다.
+    const payload = { spots: [GOOD_SPOT], isEnd: true };
+    respondWith(200, payload);
+    await expect(fetchSpots("경주", 1)).resolves.toEqual(payload);
+  });
+
+  it("식별자가 빈 문자열이어도 통과시킨다", async () => {
+    // 카카오가 식별자 없는 장소도 주고, lib/spots.ts가 그런 장소를 중복
+    // 판정에서 빼면서 그대로 살리기 때문이다.
+    const payload = { spots: [{ ...GOOD_SPOT, id: "" }], isEnd: true };
+    respondWith(200, payload);
+    await expect(fetchSpots("경주", 1)).resolves.toEqual(payload);
   });
 });
