@@ -50,7 +50,17 @@ const PLACE_COUNT = 4;
 type View =
   | { kind: "start" }
   | { kind: "loading" }
-  | { kind: "search" }
+  | {
+      kind: "search";
+      /**
+       * 검색 화면의 입력창을 채워 둘 글자. 들어오는 경로마다 다르다 —
+       * `~로 다시 찾기`는 그 글자로 다시 찾겠다는 뜻이니 채우고, `다른 곳에서 찾기`와
+       * `바꾸기`는 "다른" 곳·"바뀐" 기준을 찾겠다는 뜻이니 비운다. 하나의 필드로
+       * 합치면(예: 항상 lastKeyword를 씀) 이 구분이 사라져 세 경로가 전부 지난
+       * 검색어를 채운 채로 뜬다.
+       */
+      initialKeyword: string;
+    }
   | { kind: "candidates"; anchor: Anchor; result: NearbyResult; candidates: Cuisine[] }
   | {
       kind: "result";
@@ -364,9 +374,12 @@ export default function Home() {
       {(view.kind === "start" || view.kind === "loading") && (
         <StartScreen
           lastKeyword={lastKeyword}
-          onResume={() => setView({ kind: "search" })}
+          // `~로 다시 찾기`는 그 글자로 다시 찾겠다는 버튼이므로 지난 검색어를 채운다.
+          onResume={() => setView({ kind: "search", initialKeyword: lastKeyword })}
           onStartHere={() => start({ kind: "here" })}
-          onStartElsewhere={() => setView({ kind: "search" })}
+          // `다른 곳에서 찾기`는 "다른" 곳을 찾겠다는 뜻이므로 비운다. 그 글자로
+          // 다시 찾고 싶으면 `~로 다시 찾기`가 따로 있다.
+          onStartElsewhere={() => setView({ kind: "search", initialKeyword: "" })}
           loading={view.kind === "loading"}
           onShowVisits={() => setView({ kind: "visits" })}
         />
@@ -374,7 +387,7 @@ export default function Home() {
 
       {view.kind === "search" && (
         <SearchScreen
-          initialKeyword={lastKeyword}
+          initialKeyword={view.initialKeyword}
           onPick={pickSpot}
           onBack={() => setView({ kind: "start" })}
         />
@@ -383,7 +396,9 @@ export default function Home() {
       {view.kind === "candidates" && (
         <CandidateScreen
           whereLabel={anchorLabel(view.anchor)}
-          onChangeWhere={() => setView({ kind: "search" })}
+          // `바꾸기`는 기준 위치를 바꾸러 가는 것이지 지난 검색어로 다시 찾는 것이
+          // 아니므로 비운다. onStartElsewhere와 같은 이유다.
+          onChangeWhere={() => setView({ kind: "search", initialKeyword: "" })}
           candidates={view.candidates}
           onChoose={choose}
           onReshuffle={reshuffle}
@@ -394,7 +409,8 @@ export default function Home() {
       {view.kind === "result" && (
         <ResultScreen
           whereLabel={anchorLabel(view.anchor)}
-          onChangeWhere={() => setView({ kind: "search" })}
+          // 위 CandidateScreen의 onChangeWhere와 같은 이유로 비운다.
+          onChangeWhere={() => setView({ kind: "search", initialKeyword: "" })}
           onBackToCandidates={backToCandidates}
           cuisine={view.cuisine.label}
           places={view.places}
