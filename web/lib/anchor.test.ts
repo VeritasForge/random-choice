@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  anchorLabel, KEYWORD_KEY, readKeyword, writeKeyword, type Anchor,
+  anchorLabel, LAST_SPOT_KEY, readLastSpotName, writeLastSpotName, type Anchor,
 } from "./anchor";
 import type { Store } from "./visits";
 
@@ -22,65 +22,65 @@ function throwingStore(): Store {
   };
 }
 
-describe("검색어 저장", () => {
-  it("저장한 글자를 그대로 읽는다", () => {
+describe("장소 이름 저장", () => {
+  it("저장한 이름을 그대로 읽는다", () => {
     const store = fakeStore();
-    writeKeyword(store, "경주");
-    expect(readKeyword(store)).toBe("경주");
+    writeLastSpotName(store, "경주");
+    expect(readLastSpotName(store)).toBe("경주");
   });
 
   it("저장된 것이 없으면 null이다", () => {
-    expect(readKeyword(fakeStore())).toBeNull();
+    expect(readLastSpotName(fakeStore())).toBeNull();
   });
 
   it("가장 마지막 것 하나만 남는다", () => {
     const store = fakeStore();
-    writeKeyword(store, "경주");
-    writeKeyword(store, "강남역");
-    expect(readKeyword(store)).toBe("강남역");
+    writeLastSpotName(store, "경주");
+    writeLastSpotName(store, "강남역");
+    expect(readLastSpotName(store)).toBe("강남역");
   });
 
   it("앞뒤 공백을 떼고 저장한다", () => {
     const store = fakeStore();
-    writeKeyword(store, "  경주  ");
-    expect(readKeyword(store)).toBe("경주");
+    writeLastSpotName(store, "  경주  ");
+    expect(readLastSpotName(store)).toBe("경주");
   });
 
   it("빈 글자는 저장하지 않는다", () => {
     const store = fakeStore();
-    writeKeyword(store, "   ");
-    expect(readKeyword(store)).toBeNull();
-    expect(store.data[KEYWORD_KEY]).toBeUndefined();
+    writeLastSpotName(store, "   ");
+    expect(readLastSpotName(store)).toBeNull();
+    expect(store.data[LAST_SPOT_KEY]).toBeUndefined();
   });
 
   it("저장소가 null이어도 터지지 않는다", () => {
-    expect(readKeyword(null)).toBeNull();
-    expect(() => writeKeyword(null, "경주")).not.toThrow();
+    expect(readLastSpotName(null)).toBeNull();
+    expect(() => writeLastSpotName(null, "경주")).not.toThrow();
   });
 
   it("저장소가 예외를 던져도 터지지 않는다", () => {
     const store = throwingStore();
-    expect(readKeyword(store)).toBeNull();
-    expect(() => writeKeyword(store, "경주")).not.toThrow();
+    expect(readLastSpotName(store)).toBeNull();
+    expect(() => writeLastSpotName(store, "경주")).not.toThrow();
   });
 
   // 문자열이 아닌 값이 들어 있으면 없는 것으로 본다. 사람이 손으로 고쳤거나
   // 다른 판본이 남긴 값일 텐데, 그대로 화면에 그리면 단추 글자가 깨진다.
   it("문자열이 아닌 값은 없는 것으로 본다", () => {
     for (const bad of ['{"a":1}', "123", "true", "null", "[]", "깨진json{"]) {
-      expect(readKeyword(fakeStore({ [KEYWORD_KEY]: bad }))).toBeNull();
+      expect(readLastSpotName(fakeStore({ [LAST_SPOT_KEY]: bad }))).toBeNull();
     }
   });
 
   // **이 시험이 저장 경계를 지키는 유일한 방어다.** 카카오가 저장을 허용한 것은
   // 사용자가 직접 정한 장소의 장소식별값과 상호까지이고 좌표는 그 문구에 없다.
-  // 나중에 "단추 한 번으로 바로 조회되게" 하려고 좌표를 얹고 싶어지면,
-  // 타입 검사는 그것을 막지 못한다.
-  it("저장된 값에 좌표도 장소 이름도 들어가지 않는다", () => {
+  // 장소 이름은 이 예외에 들어맞아 이제 의도적으로 담지만, 좌표는 여전히 안 된다 —
+  // 타입 검사는 그것을 막지 못하므로 저장된 문자열 자체를 확인한다.
+  it("저장된 값에 좌표는 들어가지 않는다", () => {
     const store = fakeStore();
-    writeKeyword(store, "경주");
-    const raw = store.data[KEYWORD_KEY];
-    expect(raw).toBe(JSON.stringify("경주"));
+    writeLastSpotName(store, "경주 황리단길");
+    const raw = store.data[LAST_SPOT_KEY];
+    expect(raw).toBe(JSON.stringify("경주 황리단길"));
     expect(raw).not.toMatch(/lat|lng|\d+\.\d+/);
   });
 });

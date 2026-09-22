@@ -1,6 +1,6 @@
 type Props = {
-  /** 마지막으로 찾았던 글자. 빈 문자열이면 `~로 다시 찾기` 단추를 그리지 않는다. */
-  lastKeyword: string;
+  /** 마지막으로 고른 장소 이름. 빈 문자열이면 `OOO로 다시 찾기` 단추를 그리지 않는다. */
+  lastSpotName: string;
   onResume: () => void;
   onStartHere: () => void;
   onStartElsewhere: () => void;
@@ -9,7 +9,7 @@ type Props = {
 };
 
 export default function StartScreen({
-  lastKeyword,
+  lastSpotName,
   onResume,
   onStartHere,
   onStartElsewhere,
@@ -37,18 +37,18 @@ export default function StartScreen({
 
       <div className="flex w-full flex-col items-center gap-3">
         {/*
-          조건부 그리기에 && 가 아니라 삼항 연산자를 쓴다. `lastKeyword && <button>`은
+          조건부 그리기에 && 가 아니라 삼항 연산자를 쓴다. `lastSpotName && <button>`은
           빈 문자열일 때 ""를 그대로 그려 넣는다. 지금은 눈에 보이지 않지만, 이 자리가
           수를 담는 값으로 바뀌면 화면에 0이 뜬다.
         */}
-        {lastKeyword !== "" ? (
+        {lastSpotName !== "" ? (
           <button
             type="button"
             onClick={loading ? undefined : onResume}
             aria-disabled={loading}
             className="btn btn-primary w-full"
           >
-            {lastKeyword}로 다시 찾기
+            {lastSpotName}로 다시 찾기
           </button>
         ) : null}
         {/*
@@ -63,7 +63,7 @@ export default function StartScreen({
           onClick={loading ? undefined : onStartHere}
           aria-disabled={loading}
           aria-busy={loading}
-          className={lastKeyword !== "" ? "btn btn-quiet w-full" : "btn btn-primary w-full"}
+          className={lastSpotName !== "" ? "btn btn-quiet w-full" : "btn btn-primary w-full"}
         >
           {loading ? "주변을 살펴보는 중…" : "지금 있는 곳에서 찾기"}
         </button>

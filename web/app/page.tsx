@@ -7,9 +7,10 @@ import ResultScreen from "@/components/ResultScreen";
 import SearchScreen from "@/components/SearchScreen";
 import StartScreen from "@/components/StartScreen";
 import VisitsScreen from "@/components/VisitsScreen";
-import { type Anchor, anchorLabel, readKeyword, writeKeyword } from "@/lib/anchor";
+import { type Anchor, anchorLabel, readLastSpotName, writeLastSpotName } from "@/lib/anchor";
 import {
   fetchNearby,
+  fetchSpots,
   NearbyError,
   type Cuisine,
   type NearbyResult,
@@ -23,7 +24,7 @@ import { pickAvoiding, pickDistinct, pickOne } from "@/lib/pick";
 import { pickPlaces, WINDOW_STEP } from "@/lib/places";
 import { DEFAULT_RADIUS, WIDER_RADIUS } from "@/lib/radius";
 import { avoidNotice, canRestore } from "@/lib/reasons";
-import { type Spot } from "@/lib/spots";
+import { resolveAnchor, type Spot } from "@/lib/spots";
 import {
   browserStore,
   forgetAll,
@@ -64,11 +65,13 @@ type View =
   | {
       kind: "search";
       /**
-       * 검색 화면의 입력창을 채워 둘 글자. 들어오는 경로마다 다르다 —
-       * `~로 다시 찾기`는 그 글자로 다시 찾겠다는 뜻이니 채우고, `다른 곳에서 찾기`와
-       * `바꾸기`는 "다른" 곳·"바뀐" 기준을 찾겠다는 뜻이니 비운다. 하나의 필드로
-       * 합치면(예: 항상 lastKeyword를 씀) 이 구분이 사라져 세 경로가 전부 지난
-       * 검색어를 채운 채로 뜬다.
+       * 검색 화면의 입력창을 채워 둘 글자. `다른 곳에서 찾기`와 `바꾸기`는
+       * "다른" 곳·"바뀐" 기준을 찾겠다는 뜻이니 비운다.
+       *
+       * `OOO로 다시 찾기`는 보통 이 화면을 거치지 않는다 — resumeAnchor가
+       * 그 이름으로 곧장 결과를 구한다. 다만 그 이름으로 다시 찾지 못하면
+       * (가게가 사라졌거나 이름이 바뀐 경우) 그 이름을 채운 채로 이 화면이
+       * 뜬다 — 손으로 다시 찾으라는 뜻이다.
        */
       initialKeyword: string;
     }
@@ -147,10 +150,10 @@ export default function Home() {
   // View 밖에 두는 이유는 visits·avoidOn과 같다: View는 화면을 옮길 때마다
   // 통째로 갈아 끼우는 값이다.
   const [undoable, setUndoable] = useState<Visit[]>([]);
-  // 마지막으로 찾았던 글자. visits·avoidOn과 같은 이유로 View 밖에 둔다 —
+  // 마지막으로 고른 장소의 이름. visits·avoidOn과 같은 이유로 View 밖에 둔다 —
   // View는 화면을 옮길 때마다 통째로 갈아 끼우는 값이라, 그 안에 두면
   // 화면 하나 지나는 것만으로 설정이 날아간다.
-  const [lastKeyword, setLastKeyword] = useState("");
+  const [lastSpotName, setLastSpotName] = useState("");
 
   const mainRef = useRef<HTMLElement>(null);
   const screenName = screenNameOf(view);
@@ -171,7 +174,7 @@ export default function Home() {
     /* eslint-disable react-hooks/set-state-in-effect -- 까닭은 바로 위에 적었다 */
     setVisits(readVisits(store));
     setAvoidOn(readAvoidOn(store));
-    setLastKeyword(readKeyword(store) ?? "");
+    setLastSpotName(readLastSpotName(store) ?? "");
     /* eslint-enable react-hooks/set-state-in-effect */
   }, [store]);
 
@@ -235,16 +238,51 @@ export default function Home() {
   /**
    * 검색 화면에서 장소를 골랐을 때.
    *
-   * **저장하는 것은 사용자가 친 글자뿐이다.** 고른 장소의 이름과 좌표는 이번 조회에만
-   * 쓰고 브라우저에 남기지 않는다(설계 문서 4-5절). 그래서 다음에 열었을 때는
-   * `경주로 다시 찾기`가 보이고, 누르면 검색 화면으로 가서 한 번 더 고르게 된다.
+   * **저장하는 것은 고른 장소의 이름뿐이다.** 좌표는 여전히 브라우저에 남기지
+   * 않는다(web/lib/anchor.ts). 그래서 다음에 열었을 때는 `동백역 에버라인으로
+   * 다시 찾기`가 보이고, 누르면 그 이름으로 곧장 결과를 구한다(resumeAnchor).
    */
-  function pickSpot(spot: Spot, keyword: string) {
-    writeKeyword(store, keyword);
-    setLastKeyword(keyword);
+  function pickSpot(spot: Spot) {
+    writeLastSpotName(store, spot.name);
+    setLastSpotName(spot.name);
     // from: "search" — 검색 화면에서 고른 것이므로 조회 중에도 검색 화면을
     // 그대로 보여 준다(위 View의 "loading" 갈래 주석).
     start({ kind: "spot", name: spot.name, lat: spot.lat, lng: spot.lng }, DEFAULT_RADIUS, "search");
+  }
+
+  /**
+   * 시작 화면의 `OOO로 다시 찾기`를 눌렀을 때.
+   *
+   * 저장해 둔 것은 장소 이름뿐이고 좌표는 저장하지 않으므로(web/lib/anchor.ts),
+   * 그 이름으로 카카오에 다시 물어 기준점을 새로 구한다. 검색 화면을 거치지
+   * 않고 곧장 결과로 넘어가는 것이 이 함수의 핵심이다.
+   *
+   * 다시 찾지 못하면(이름이 바뀌었거나 없어진 가게, 또는 조회 자체가 실패)
+   * 그 이름을 채운 검색 화면을 열어 손으로 다시 찾게 한다 — `OOO로 다시 찾기`가
+   * 생기기 전의 동작과 같다. 이 실패를 오류 화면(view.kind === "error")으로
+   * 보내지 않는 이유: 그 화면의 "다시 시도"는 이미 정해진 좌표로 다시 부르는
+   * 것인데, 여기서는 아직 좌표를 구하지 못한 채로 실패했다.
+   */
+  async function resumeAnchor(name: string) {
+    setView({ kind: "loading", from: "start" });
+    let spots: Spot[];
+    try {
+      spots = (await fetchSpots(name, 1)).spots;
+    } catch (cause) {
+      console.error("[resumeAnchor] 이름으로 다시 찾기 실패", cause);
+      setView({ kind: "search", initialKeyword: name });
+      return;
+    }
+    const anchor = resolveAnchor(spots);
+    if (anchor === null) {
+      setView({ kind: "search", initialKeyword: name });
+      return;
+    }
+    // 다시 찾은 이름으로 갱신한다. 카카오가 그때와 표기를 조금 다르게 돌려주면
+    // (예: 지점명이 붙거나 빠지면) 다음에도 같은 곳을 곧장 찾을 수 있어야 한다.
+    writeLastSpotName(store, anchor.name);
+    setLastSpotName(anchor.name);
+    await start(anchor, DEFAULT_RADIUS, "start");
   }
 
   function reshuffle() {
@@ -400,9 +438,10 @@ export default function Home() {
           조회가 아니면 여기서는 아무것도 그리지 않는다 — 검색 화면 쪽 조건이 맡는다. */}
       {(view.kind === "start" || (view.kind === "loading" && view.from === "start")) && (
         <StartScreen
-          lastKeyword={lastKeyword}
-          // `~로 다시 찾기`는 그 글자로 다시 찾겠다는 버튼이므로 지난 검색어를 채운다.
-          onResume={() => setView({ kind: "search", initialKeyword: lastKeyword })}
+          lastSpotName={lastSpotName}
+          // `OOO로 다시 찾기`는 그 장소로 곧장 다시 찾겠다는 버튼이므로 검색
+          // 화면을 거치지 않고 resumeAnchor가 그 이름으로 곧장 결과를 구한다.
+          onResume={() => resumeAnchor(lastSpotName)}
           onStartHere={() => start({ kind: "here" })}
           // `다른 곳에서 찾기`는 "다른" 곳을 찾겠다는 뜻이므로 비운다. 그 글자로
           // 다시 찾고 싶으면 `~로 다시 찾기`가 따로 있다.

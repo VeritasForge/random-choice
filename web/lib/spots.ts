@@ -6,6 +6,8 @@
  * 아무 시험도 이것을 지키지 못한다.
  */
 
+import type { Anchor } from "./anchor";
+
 /** 음식점을 찾을 기준으로 삼을 장소 한 곳. 서버의 spotDTO와 같은 모양이다. */
 export type Spot = {
   id: string;
@@ -54,4 +56,21 @@ export function appendSpots(existing: readonly Spot[], incoming: readonly Spot[]
  */
 export function queryForPage(page: number, keyword: string, searched: string): string {
   return page === 1 ? keyword.trim() : searched;
+}
+
+/**
+ * `OOO로 다시 찾기`가 이름으로 다시 조회한 결과에서 기준점을 고른다.
+ *
+ * 카카오가 매긴 순위 그대로 1등을 쓴다. 좌표를 저장해 두지 않으므로(web/lib/anchor.ts)
+ * 이름으로 다시 물어야 하는데, 같은 이름의 가게가 여럿이거나 그때와 카카오의 순위가
+ * 바뀌면 이전과 다른 곳이 나올 수 있다 — 검색 화면 없이 곧장 결과로 넘어가기로 한
+ * 대신 감수하기로 한 위험이다.
+ *
+ * 결과가 없으면 null이다. 이름이 바뀌었거나 가게가 없어진 경우이고, 부르는 쪽은
+ * 그 이름을 채운 검색 화면을 열어 손으로 다시 찾게 해야 한다(web/app/page.tsx의
+ * resumeAnchor).
+ */
+export function resolveAnchor(spots: readonly Spot[]): Extract<Anchor, { kind: "spot" }> | null {
+  const top = spots[0];
+  return top === undefined ? null : { kind: "spot", name: top.name, lat: top.lat, lng: top.lng };
 }

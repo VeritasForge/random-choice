@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { appendSpots, queryForPage, type Spot } from "./spots";
+import { appendSpots, queryForPage, resolveAnchor, type Spot } from "./spots";
 
 const spot = (id: string, name = `장소${id}`): Spot => ({
   id, name, address: "주소", category: "", lat: 35.8, lng: 129.2,
@@ -76,5 +76,19 @@ describe("더 보기 검색어 정하기", () => {
   it("2쪽 이상은 입력창이 아니라 방금 찾았던 글자를 쓴다", () => {
     expect(queryForPage(2, "부산", "경주")).toBe("경주");
     expect(queryForPage(3, "부산", "경주")).toBe("경주");
+  });
+});
+
+describe("다시 찾기 기준점 고르기", () => {
+  it("결과가 있으면 1등을 기준점으로 쓴다", () => {
+    const top = spot("a", "동백역 에버라인");
+    const second = spot("b", "다른 곳");
+    expect(resolveAnchor([top, second])).toEqual({
+      kind: "spot", name: "동백역 에버라인", lat: 35.8, lng: 129.2,
+    });
+  });
+
+  it("결과가 없으면 null이다", () => {
+    expect(resolveAnchor([])).toBeNull();
   });
 });

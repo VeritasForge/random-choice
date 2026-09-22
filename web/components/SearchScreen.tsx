@@ -6,9 +6,9 @@ import { errorNotice } from "@/lib/errors";
 import { appendSpots, queryForPage, type Spot } from "@/lib/spots";
 
 type Props = {
-  /** 시작 화면의 `~로 다시 찾기`로 들어왔을 때 입력창에 채워 둘 글자. */
+  /** 시작 화면의 `OOO로 다시 찾기`가 이름으로 다시 찾지 못했을 때 입력창에 채워 둘 글자. */
   initialKeyword: string;
-  onPick: (spot: Spot, keyword: string) => void;
+  onPick: (spot: Spot) => void;
   onBack: () => void;
   /**
    * 장소를 골라 그 좌표로 음식점을 조회하는 중인가(web/app/page.tsx의
@@ -138,7 +138,7 @@ export default function SearchScreen({ initialKeyword, onPick, onBack, picking }
               // 조회 중에는 다른 장소를 고르지 못하게 막는다. 막지 않으면 조회
               // 두 개가 동시에 돌고, 나중에 끝난 쪽이 화면을 차지해 방금 고른
               // 장소가 아닌 엉뚱한 결과가 뜬다.
-              onClick={picking ? undefined : () => onPick(spot, searched)}
+              onClick={picking ? undefined : () => onPick(spot)}
               aria-disabled={picking}
               className="row flex w-full items-center justify-between gap-3 rounded-xl border border-line p-3 text-left"
             >

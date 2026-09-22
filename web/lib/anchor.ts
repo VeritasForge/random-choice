@@ -12,18 +12,21 @@ export type Anchor =
   | { kind: "spot"; name: string; lat: number; lng: number };
 
 /**
- * 사용자가 마지막으로 친 검색어를 담는 열쇠.
+ * 사용자가 마지막으로 고른 장소의 이름을 담는 열쇠.
  *
- * **여기 담기는 것은 사용자가 친 글자 하나뿐이다.** 카카오가 돌려준 장소 이름도
- * 좌표도 담지 않는다. 카카오는 조회 결과의 저장을 금지하고, 담당자가 밝힌 예외는
- * "사용자가 직접 고른 장소의 장소식별값과 상호"까지여서 좌표는 그 문구에 없다
- * (설계 문서 4-5절). 사용자가 친 글자는 카카오 응답이 아니라 사용자가 만든
- * 입력이므로 이 경계와 무관하고, 회피 스위치(random-choice.avoid.v1)와 같은 성격이다.
+ * **여기 담기는 것은 장소 이름뿐이다. 좌표는 담지 않는다.** 카카오는 조회
+ * 결과의 저장을 금지하고, 담당자가 밝힌 예외는 "사용자가 직접 고른 장소의
+ * 장소식별값과 상호"까지다(설계 문서 4-5절). 장소 이름은 이 예외에 그대로
+ * 들어맞지만 좌표는 그 문구에 없다. 그래서 다시 찾을 때 좌표를 미리 저장해
+ * 두는 대신, 이 이름으로 카카오에 한 번 더 물어 기준점을 새로 구한다
+ * (web/app/page.tsx의 resumeAnchor, web/lib/spots.ts의 resolveAnchor).
  *
- * 판 번호(v1)를 붙이는 이유: 담는 모양이 바뀌면 옛 값을 읽다 깨지는 대신
- * 새 열쇠로 옮겨 갈 수 있다. 이 저장소의 다른 두 열쇠와 같은 규칙이다.
+ * 이전 판(random-choice.keyword.v1)은 사용자가 친 글자만 담았다. 담는
+ * 대상 자체가 "친 글자"에서 "고른 장소 이름"으로 바뀐 것이라 옛 열쇠를
+ * 이어 쓰지 않고 새 열쇠를 쓴다 — 옛 값을 새 의미로 잘못 읽는 것보다
+ * 한 번 비어 보이는 편이 낫다.
  */
-export const KEYWORD_KEY = "random-choice.keyword.v1";
+export const LAST_SPOT_KEY = "random-choice.last-spot.v1";
 
 /**
  * 기준 위치 줄에 쓸 이름의 최대 길이. 넘으면 줄이고 말줄임표를 붙인다.
@@ -40,15 +43,15 @@ export const KEYWORD_KEY = "random-choice.keyword.v1";
 const MAX_NAME = 12;
 
 /**
- * 마지막으로 친 검색어를 읽는다. 없거나 읽지 못하면 null이다.
+ * 마지막으로 고른 장소의 이름을 읽는다. 없거나 읽지 못하면 null이다.
  *
  * 문자열이 아닌 값을 전부 null로 보는 이유: 그대로 화면에 그리면
  * `[object Object]로 다시 찾기` 같은 단추가 생긴다.
  */
-export function readKeyword(store: Store | null): string | null {
+export function readLastSpotName(store: Store | null): string | null {
   if (store === null) return null;
   try {
-    const raw = store.getItem(KEYWORD_KEY);
+    const raw = store.getItem(LAST_SPOT_KEY);
     if (raw === null) return null;
     const parsed: unknown = JSON.parse(raw);
     return typeof parsed === "string" && parsed.length > 0 ? parsed : null;
@@ -58,16 +61,16 @@ export function readKeyword(store: Store | null): string | null {
 }
 
 /**
- * 검색어를 저장한다. 앞뒤 공백을 떼고, 비면 아무것도 하지 않는다.
+ * 장소 이름을 저장한다. 앞뒤 공백을 떼고, 비면 아무것도 하지 않는다.
  *
  * 빈 값을 저장하지 않는 이유: 저장하면 시작 화면에 글자 없는 단추가 하나 생긴다.
  */
-export function writeKeyword(store: Store | null, keyword: string): void {
+export function writeLastSpotName(store: Store | null, name: string): void {
   if (store === null) return;
-  const trimmed = keyword.trim();
+  const trimmed = name.trim();
   if (trimmed === "") return;
   try {
-    store.setItem(KEYWORD_KEY, JSON.stringify(trimmed));
+    store.setItem(LAST_SPOT_KEY, JSON.stringify(trimmed));
   } catch {
     // 용량이 찼거나 저장이 막혔다. 사용자가 할 수 있는 일이 없으므로 조용히 넘어간다.
     // 이번 세션에서는 화면이 들고 있는 값이 맞으므로 그대로 쓴다.
@@ -75,13 +78,13 @@ export function writeKeyword(store: Store | null, keyword: string): void {
 }
 
 /**
- * 검색어를 완전히 지우는 함수를 일부러 두지 않는다.
+ * 장소 이름을 완전히 지우는 함수를 일부러 두지 않는다.
  *
- * 검색어는 조회 기록이 아니라 회피 스위치(random-choice.avoid.v1)와 같은 성격의
- * **사용자 설정**이다(위 KEYWORD_KEY 주석). 기록 화면의 `전체 지우기`가 회피
- * 스위치를 건드리지 않는 것과 같은 이유로, 검색어도 그 자리에 묶지 않는다.
+ * 이 값은 조회 기록이 아니라 회피 스위치(random-choice.avoid.v1)와 같은 성격의
+ * **사용자 설정**이다(위 LAST_SPOT_KEY 주석). 기록 화면의 `전체 지우기`가 회피
+ * 스위치를 건드리지 않는 것과 같은 이유로, 이 값도 그 자리에 묶지 않는다.
  * 완전히 비우는 길이 없는 것은 회피 스위치도 마찬가지이고, 다른 곳을 찾으면
- * 그 글자로 덮어써지므로 바꾸는 길 자체는 있다.
+ * 그 이름으로 덮어써지므로 바꾸는 길 자체는 있다.
  */
 
 /**
