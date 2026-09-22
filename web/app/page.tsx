@@ -74,6 +74,16 @@ type View =
        * 뜬다 — 손으로 다시 찾으라는 뜻이다.
        */
       initialKeyword: string;
+      /**
+       * `돌아가기`를 누르면 되돌아갈 화면. 이 화면으로 들어오는 길이 셋이다 —
+       * 시작 화면의 `다른 곳에서 찾기`, 후보·결과 화면의 `바꾸기`, 그리고
+       * `OOO로 다시 찾기`가 실패했을 때. 고정된 화면(예: 언제나 시작 화면)으로
+       * 되돌리면 후보나 결과를 보다가 `바꾸기`를 누른 사람이 그 화면을 잃고
+       * 시작 화면으로 튕긴다 — 옮긴 위치에서는 그 뒤 조회까지 다시 해야 하는
+       * 큰 손실이다(candidates·result 갈래에 anchor·result를 들고 있는 것과
+       * 같은 이유).
+       */
+      returnTo: Extract<View, { kind: "start" | "candidates" | "result" }>;
     }
   | { kind: "candidates"; anchor: Anchor; result: NearbyResult; candidates: Cuisine[] }
   | {
@@ -270,12 +280,12 @@ export default function Home() {
       spots = (await fetchSpots(name, 1)).spots;
     } catch (cause) {
       console.error("[resumeAnchor] 이름으로 다시 찾기 실패", cause);
-      setView({ kind: "search", initialKeyword: name });
+      setView({ kind: "search", initialKeyword: name, returnTo: { kind: "start" } });
       return;
     }
     const anchor = resolveAnchor(spots);
     if (anchor === null) {
-      setView({ kind: "search", initialKeyword: name });
+      setView({ kind: "search", initialKeyword: name, returnTo: { kind: "start" } });
       return;
     }
     // 다시 찾은 이름으로 갱신한다. 카카오가 그때와 표기를 조금 다르게 돌려주면
@@ -445,7 +455,9 @@ export default function Home() {
           onStartHere={() => start({ kind: "here" })}
           // `다른 곳에서 찾기`는 "다른" 곳을 찾겠다는 뜻이므로 비운다. 그 글자로
           // 다시 찾고 싶으면 `~로 다시 찾기`가 따로 있다.
-          onStartElsewhere={() => setView({ kind: "search", initialKeyword: "" })}
+          onStartElsewhere={() =>
+            setView({ kind: "search", initialKeyword: "", returnTo: { kind: "start" } })
+          }
           loading={view.kind === "loading"}
           onShowVisits={() => setView({ kind: "visits" })}
         />
@@ -463,7 +475,12 @@ export default function Home() {
         <SearchScreen
           initialKeyword={view.kind === "search" ? view.initialKeyword : ""}
           onPick={pickSpot}
-          onBack={() => setView({ kind: "start" })}
+          // 조회 중(view.kind === "loading")에는 돌아갈 곳이 없다 — 아래
+          // picking이 이미 돌아가기 단추 자체를 잠근다. view.kind === "search"일
+          // 때만 실제로 returnTo를 읽는다.
+          onBack={() => {
+            if (view.kind === "search") setView(view.returnTo);
+          }}
           picking={view.kind === "loading"}
         />
       )}
@@ -473,7 +490,11 @@ export default function Home() {
           whereLabel={anchorLabel(view.anchor)}
           // `바꾸기`는 기준 위치를 바꾸러 가는 것이지 지난 검색어로 다시 찾는 것이
           // 아니므로 비운다. onStartElsewhere와 같은 이유다.
-          onChangeWhere={() => setView({ kind: "search", initialKeyword: "" })}
+          // returnTo에 이 화면(view) 자체를 담는다 — `돌아가기`를 누르면 조회를
+          // 다시 하지 않고 지금 보던 후보로 그대로 돌아가야 한다.
+          onChangeWhere={() =>
+            setView({ kind: "search", initialKeyword: "", returnTo: view })
+          }
           candidates={view.candidates}
           onChoose={choose}
           onReshuffle={reshuffle}
@@ -484,8 +505,11 @@ export default function Home() {
       {view.kind === "result" && (
         <ResultScreen
           whereLabel={anchorLabel(view.anchor)}
-          // 위 CandidateScreen의 onChangeWhere와 같은 이유로 비운다.
-          onChangeWhere={() => setView({ kind: "search", initialKeyword: "" })}
+          // 위 CandidateScreen의 onChangeWhere와 같은 이유로 비우고, 같은 이유로
+          // returnTo에 이 화면(view)을 담는다.
+          onChangeWhere={() =>
+            setView({ kind: "search", initialKeyword: "", returnTo: view })
+          }
           onBackToCandidates={backToCandidates}
           cuisine={view.cuisine.label}
           places={view.places}
