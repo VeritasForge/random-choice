@@ -235,7 +235,10 @@ export default function ResultScreen({
   }
 
   return (
-    // grow·my-auto로 버튼 묶음을 화면 아래쪽에 붙인다(까닭은 StartScreen에 적어 두었다).
+    // grow와 아래 버튼 묶음의 mt-auto로 버튼을 화면 아래쪽에 붙인다(까닭은 StartScreen에 적어 두었다).
+    // 가운데 덩어리에는 my-auto를 주지 않는다. 주면 "정했어요" 직후 마무리 상자가 생길 때
+    // 덩어리가 가운데를 다시 잡으며 제목과 목록이 위로 밀린다. 결정을 누른 바로 그 순간에
+    // 화면이 움직이면 방금 누른 줄을 놓친다.
     <section className="rise flex w-full grow flex-col">
       {/*
         무엇을 기준으로 찾았는지 맨 위에서 밝힌다. 화면을 몇 번 넘기면 자기가 어느
@@ -252,7 +255,7 @@ export default function ResultScreen({
         </button>
       </div>
 
-      <div className="my-auto flex w-full flex-col items-center gap-5 py-6">
+      <div className="flex w-full flex-col items-center gap-5 py-6">
         {/*
           회피가 한 일을 맨 위에서 밝힌다. 조용히 거르면 사용자에게 통제권이 없는 것과
           같기 때문이다. 회피를 껐을 때도 같은 자리에서 밝힌다 — 켜졌을 때만 알리고
@@ -351,7 +354,7 @@ export default function ResultScreen({
         </p>
       </div>
 
-      <div className="flex w-full flex-col gap-3">
+      <div className="mt-auto flex w-full flex-col gap-3">
         {/*
           보여주지 못하고 남은 가게가 있을 때만 버튼을 둔다. 걸러진 것을 이미 전부
           보여주고 있는데 버튼을 두면, 눌러도 같은 목록이 그대로 남아
