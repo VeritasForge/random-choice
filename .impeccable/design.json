@@ -4,6 +4,21 @@
   "title": "Design System: 오늘은 뭐 먹지?",
   "extensions": {
     "colorMeta": {
+      "counter-wood": {
+        "role": "neutral",
+        "displayName": "생나무 카운터",
+        "canonical": "#dfc9a3",
+        "tonalRamp": [
+          "#0f0c05",
+          "#392b14",
+          "#664e24",
+          "#977335",
+          "#c09449",
+          "#d1b17b",
+          "#e5d3b3",
+          "#f6efe5"
+        ]
+      },
       "paper": {
         "role": "neutral",
         "displayName": "마른 쌀종이",
@@ -67,7 +82,7 @@
       "clay-line": {
         "role": "neutral",
         "displayName": "마른 진흙 선",
-        "canonical": "#8f857a",
+        "canonical": "#575049",
         "tonalRamp": [
           "#0c0b0a",
           "#282420",
@@ -175,7 +190,7 @@
       "refersTo": "button-quiet",
       "description": "되돌리기·다시 하기처럼 언제 눌러도 되는 버튼. 테두리만 있다.",
       "html": "<button class=\"ds-btn ds-btn-quiet\">다시 뽑기</button>",
-      "css": ".ds-btn{display:inline-flex;align-items:center;justify-content:center;gap:.5rem;min-height:48px;min-width:48px;padding:.75rem 1.25rem;border-radius:9999px;font-size:1rem;font-weight:600;line-height:1.3;text-align:center;word-break:keep-all;cursor:pointer;background:transparent;font-family:inherit;transition:background-color 100ms ease-out,border-color 100ms ease-out,color 100ms ease-out} .ds-btn-quiet{border:1px solid var(--line,#8f857a);color:var(--foreground,#1c1a17)} .ds-btn-quiet:hover{background:var(--surface,#f0ede8);border-color:var(--foreground,#1c1a17)} .ds-btn:focus-visible{outline:2px solid var(--foreground,#1c1a17);outline-offset:2px}"
+      "css": ".ds-btn{display:inline-flex;align-items:center;justify-content:center;gap:.5rem;min-height:48px;min-width:48px;padding:.75rem 1.25rem;border-radius:9999px;font-size:1rem;font-weight:600;line-height:1.3;text-align:center;word-break:keep-all;cursor:pointer;background:var(--background,#faf9f7);font-family:inherit;transition:background-color 100ms ease-out,border-color 100ms ease-out,color 100ms ease-out} .ds-btn-quiet{border:1px solid var(--line,#575049);color:var(--foreground,#1c1a17)} .ds-btn-quiet:hover{background:var(--surface,#f0ede8);border-color:var(--foreground,#1c1a17)} .ds-btn:focus-visible{outline:2px solid var(--foreground,#1c1a17);outline-offset:2px}"
     },
     {
       "name": "Accent Quiet Button",
@@ -183,7 +198,7 @@
       "refersTo": "button-accent-quiet",
       "description": "목록 줄 안의 주요 동작. 테두리와 글자만 강조색이고 호버에서 꽉 채운다.",
       "html": "<button class=\"ds-btn ds-btn-accent-quiet\">여기로 정했어요</button>",
-      "css": ".ds-btn{display:inline-flex;align-items:center;justify-content:center;gap:.5rem;min-height:48px;min-width:48px;padding:.5rem .875rem;border-radius:9999px;font-size:1rem;font-weight:600;line-height:1.3;text-align:center;word-break:keep-all;cursor:pointer;background:transparent;font-family:inherit;transition:background-color 100ms ease-out,border-color 100ms ease-out,color 100ms ease-out} .ds-btn-accent-quiet{border:1px solid var(--accent,#b8552f);color:var(--accent,#b8552f)} .ds-btn-accent-quiet:hover{background:var(--accent,#b8552f);color:var(--accent-ink,#ffffff)} .ds-btn:focus-visible{outline:2px solid var(--foreground,#1c1a17);outline-offset:2px}"
+      "css": ".ds-btn{display:inline-flex;align-items:center;justify-content:center;gap:.5rem;min-height:48px;min-width:48px;padding:.5rem .875rem;border-radius:9999px;font-size:1rem;font-weight:600;line-height:1.3;text-align:center;word-break:keep-all;cursor:pointer;background:var(--background,#faf9f7);font-family:inherit;transition:background-color 100ms ease-out,border-color 100ms ease-out,color 100ms ease-out} .ds-btn-accent-quiet{border:1px solid var(--accent,#b8552f);color:var(--accent,#b8552f)} .ds-btn-accent-quiet:hover{background:var(--accent,#b8552f);color:var(--accent-ink,#ffffff)} .ds-btn:focus-visible{outline:2px solid var(--foreground,#1c1a17);outline-offset:2px}"
     },
     {
       "name": "Danger Quiet Button",
@@ -191,7 +206,7 @@
       "refersTo": "button-danger-quiet",
       "description": "되돌릴 수 없는 지우기 전용. 곁글색으로 한 단 물려 다음 걸음이 아님을 말한다.",
       "html": "<button class=\"ds-btn ds-btn-danger-quiet\">전체 지우기</button>",
-      "css": ".ds-btn{display:inline-flex;align-items:center;justify-content:center;gap:.5rem;min-height:48px;min-width:48px;padding:.75rem 1.25rem;border-radius:9999px;font-size:1rem;font-weight:600;line-height:1.3;text-align:center;word-break:keep-all;cursor:pointer;background:transparent;font-family:inherit;transition:background-color 100ms ease-out,border-color 100ms ease-out,color 100ms ease-out} .ds-btn-danger-quiet{border:1px solid var(--muted,#6b6560);color:var(--muted,#6b6560)} .ds-btn-danger-quiet:hover{border-color:var(--foreground,#1c1a17);color:var(--foreground,#1c1a17)} .ds-btn:focus-visible{outline:2px solid var(--foreground,#1c1a17);outline-offset:2px}"
+      "css": ".ds-btn{display:inline-flex;align-items:center;justify-content:center;gap:.5rem;min-height:48px;min-width:48px;padding:.75rem 1.25rem;border-radius:9999px;font-size:1rem;font-weight:600;line-height:1.3;text-align:center;word-break:keep-all;cursor:pointer;background:var(--background,#faf9f7);font-family:inherit;transition:background-color 100ms ease-out,border-color 100ms ease-out,color 100ms ease-out} .ds-btn-danger-quiet{border:1px solid var(--muted,#6b6560);color:var(--muted,#6b6560)} .ds-btn-danger-quiet:hover{border-color:var(--foreground,#1c1a17);color:var(--foreground,#1c1a17)} .ds-btn:focus-visible{outline:2px solid var(--foreground,#1c1a17);outline-offset:2px}"
     },
     {
       "name": "Cuisine Card",
@@ -199,7 +214,7 @@
       "refersTo": "cuisine-card",
       "description": "후보 화면에서 음식 종류 하나를 고르는 카드. 이름과 주변 곳 수를 함께 적는다.",
       "html": "<button class=\"ds-cuisine\"><span class=\"ds-cuisine-name\">돈까스·우동</span><span class=\"ds-cuisine-count\">주변 12곳</span></button>",
-      "css": ".ds-cuisine{display:inline-flex;flex-direction:column;align-items:center;justify-content:center;gap:.25rem;min-height:7rem;min-width:9rem;padding:.75rem;border-radius:1rem;border:1px solid var(--line,#8f857a);background:transparent;color:var(--foreground,#1c1a17);font-family:inherit;cursor:pointer;transition:background-color 100ms ease-out,border-color 100ms ease-out} .ds-cuisine:hover{background:var(--surface,#f0ede8);border-color:var(--foreground,#1c1a17)} .ds-cuisine:focus-visible{outline:2px solid var(--foreground,#1c1a17);outline-offset:2px} .ds-cuisine-name{font-size:1.125rem;font-weight:600} .ds-cuisine-count{font-size:1rem;font-weight:400;color:var(--muted,#6b6560)}"
+      "css": ".ds-cuisine{display:inline-flex;flex-direction:column;align-items:center;justify-content:center;gap:.25rem;min-height:7rem;min-width:9rem;padding:.75rem;border-radius:1rem;border:1px solid var(--line,#575049);background:var(--background,#faf9f7);color:var(--foreground,#1c1a17);font-family:inherit;cursor:pointer;transition:background-color 100ms ease-out,border-color 100ms ease-out} .ds-cuisine:hover{background:var(--surface,#f0ede8);border-color:var(--foreground,#1c1a17)} .ds-cuisine:focus-visible{outline:2px solid var(--foreground,#1c1a17);outline-offset:2px} .ds-cuisine-name{font-size:1.125rem;font-weight:600} .ds-cuisine-count{font-size:1rem;font-weight:400;color:var(--muted,#6b6560)}"
     },
     {
       "name": "Notice Box",
@@ -207,7 +222,7 @@
       "refersTo": "notice-box",
       "description": "위치 기준을 알리는 안내 상자. 한 단 낮은 종이 바닥에 진흙색 테두리.",
       "html": "<div class=\"ds-notice\"><span class=\"ds-notice-text\">첨성대에서 찾았어요</span><button class=\"ds-notice-btn\">바꾸기</button></div>",
-      "css": ".ds-notice{display:flex;align-items:center;justify-content:space-between;gap:.5rem;padding:.75rem;border-radius:.75rem;border:1px solid var(--line,#8f857a);background:var(--surface,#f0ede8);font-family:inherit} .ds-notice-text{font-size:.875rem;color:var(--muted,#6b6560);overflow:hidden;text-overflow:ellipsis;white-space:nowrap} .ds-notice-btn{flex-shrink:0;min-height:48px;padding:.5rem .875rem;border-radius:9999px;border:1px solid var(--line,#8f857a);background:transparent;color:var(--foreground,#1c1a17);font-family:inherit;font-size:1rem;font-weight:600;cursor:pointer} .ds-notice-btn:hover{background:var(--surface,#f0ede8);border-color:var(--foreground,#1c1a17)} .ds-notice-btn:focus-visible{outline:2px solid var(--foreground,#1c1a17);outline-offset:2px}"
+      "css": ".ds-notice{display:flex;align-items:center;justify-content:space-between;gap:.5rem;padding:.75rem;border-radius:.75rem;border:1px solid var(--line,#575049);background:var(--surface,#f0ede8);font-family:inherit} .ds-notice-text{font-size:.875rem;color:var(--muted,#6b6560);overflow:hidden;text-overflow:ellipsis;white-space:nowrap} .ds-notice-btn{flex-shrink:0;min-height:48px;padding:.5rem .875rem;border-radius:9999px;border:1px solid var(--line,#575049);background:var(--background,#faf9f7);color:var(--foreground,#1c1a17);font-family:inherit;font-size:1rem;font-weight:600;cursor:pointer} .ds-notice-btn:hover{background:var(--surface,#f0ede8);border-color:var(--foreground,#1c1a17)} .ds-notice-btn:focus-visible{outline:2px solid var(--foreground,#1c1a17);outline-offset:2px}"
     },
     {
       "name": "Place Row",
@@ -215,7 +230,7 @@
       "refersTo": "place-row",
       "description": "결과 화면의 가게 한 줄. 이름(밑줄, 두 줄까지), 거리·주소(두 줄까지), 주요 동작이 한 줄에 선다.",
       "html": "<div class=\"ds-row\"><span class=\"ds-row-main\"><span class=\"ds-row-name\">연돈</span><span class=\"ds-row-meta\">120m · 도보 2분</span></span><button class=\"ds-row-action\">여기로 정했어요</button></div>",
-      "css": ".ds-row{display:flex;align-items:center;justify-content:space-between;gap:.75rem;padding:.75rem;border-radius:.75rem;border:1px solid var(--line,#8f857a);font-family:inherit;color:var(--foreground,#1c1a17)} .ds-row-main{display:flex;flex-direction:column;gap:.125rem;min-width:0} .ds-row-name{font-size:1.125rem;font-weight:600;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;text-decoration:underline;text-decoration-color:var(--line,#8f857a);text-underline-offset:4px} .ds-row-meta{font-size:1rem;color:var(--muted,#6b6560);font-variant-numeric:tabular-nums} .ds-row-action{flex-shrink:0;min-height:48px;padding:.5rem .875rem;border-radius:9999px;border:1px solid var(--accent,#b8552f);background:transparent;color:var(--accent,#b8552f);font-family:inherit;font-size:1rem;font-weight:600;cursor:pointer;transition:background-color 100ms ease-out,color 100ms ease-out} .ds-row-action:hover{background:var(--accent,#b8552f);color:var(--accent-ink,#ffffff)} .ds-row-action:focus-visible{outline:2px solid var(--foreground,#1c1a17);outline-offset:2px}"
+      "css": ".ds-row{background:var(--background,#faf9f7);display:flex;align-items:center;justify-content:space-between;gap:.75rem;padding:.75rem;border-radius:.75rem;border:1px solid var(--line,#575049);font-family:inherit;color:var(--foreground,#1c1a17)} .ds-row-main{display:flex;flex-direction:column;gap:.125rem;min-width:0} .ds-row-name{font-size:1.125rem;font-weight:600;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;text-decoration:underline;text-decoration-color:var(--line,#575049);text-underline-offset:4px} .ds-row-meta{font-size:1rem;color:var(--muted,#6b6560);font-variant-numeric:tabular-nums} .ds-row-action{flex-shrink:0;min-height:48px;padding:.5rem .875rem;border-radius:9999px;border:1px solid var(--accent,#b8552f);background:var(--background,#faf9f7);color:var(--accent,#b8552f);font-family:inherit;font-size:1rem;font-weight:600;cursor:pointer;transition:background-color 100ms ease-out,color 100ms ease-out} .ds-row-action:hover{background:var(--accent,#b8552f);color:var(--accent-ink,#ffffff)} .ds-row-action:focus-visible{outline:2px solid var(--foreground,#1c1a17);outline-offset:2px}"
     },
     {
       "name": "Search Field",
@@ -223,7 +238,7 @@
       "refersTo": "search-field",
       "description": "위치 검색 입력칸. 이름표는 화면 낭독기용으로만 있다.",
       "html": "<div class=\"ds-search\"><input class=\"ds-input\" type=\"search\" placeholder=\"경주, 강남역, 제주시 애월읍…\"><button class=\"ds-search-btn\">찾기</button></div>",
-      "css": ".ds-search{display:flex;gap:.5rem;font-family:inherit} .ds-input{min-width:0;flex:1;padding:.5rem .75rem;border-radius:.75rem;border:1px solid var(--line,#8f857a);background:transparent;color:var(--foreground,#1c1a17);font-family:inherit;font-size:1rem} .ds-input:focus-visible{outline:2px solid var(--foreground,#1c1a17);outline-offset:2px} .ds-search-btn{flex-shrink:0;min-height:48px;min-width:48px;padding:.75rem 1.25rem;border-radius:9999px;border:1px solid transparent;background:var(--accent,#b8552f);color:var(--accent-ink,#ffffff);font-family:inherit;font-size:1rem;font-weight:600;cursor:pointer} .ds-search-btn:focus-visible{outline:2px solid var(--foreground,#1c1a17);outline-offset:2px}"
+      "css": ".ds-search{display:flex;gap:.5rem;font-family:inherit} .ds-input{min-width:0;flex:1;padding:.5rem .75rem;border-radius:.75rem;border:1px solid var(--line,#575049);background:var(--background,#faf9f7);color:var(--foreground,#1c1a17);font-family:inherit;font-size:1rem} .ds-input:focus-visible{outline:2px solid var(--foreground,#1c1a17);outline-offset:2px} .ds-search-btn{flex-shrink:0;min-height:48px;min-width:48px;padding:.75rem 1.25rem;border-radius:9999px;border:1px solid transparent;background:var(--accent,#b8552f);color:var(--accent-ink,#ffffff);font-family:inherit;font-size:1rem;font-weight:600;cursor:pointer} .ds-search-btn:focus-visible{outline:2px solid var(--foreground,#1c1a17);outline-offset:2px}"
     },
     {
       "name": "Noren Title",
@@ -238,7 +253,7 @@
     "northStar": "단골집 주인장",
     "overview": "묻지 않고 내놓고, 싫다면 바로 바꿔 주고, 말이 짧은 가게 주인을 화면의 성격으로 삼습니다. 이 성격은 장식이 아니라 구조로 나타납니다. 결과는 한 덩어리로 단정하게 내놓고, 흐름은 재확인 없이 짧게 이어지며, 모든 선택은 버튼 하나로 되돌릴 수 있습니다. 색, 글꼴, 움직임은 이 세 가지를 방해하지 않는 선에서만 고릅니다.\n\n분위기는 따뜻하고, 차분하면서 또렷하며, 유쾌합니다. 따뜻함은 종이색 바탕과 테라코타 한 가지 강조색에서, 또렷함은 모든 글자와 경계선이 지키는 명암비에서 나옵니다. 유쾌함은 그림이나 장식이 아니라 말투에서 나옵니다.",
     "keyCharacteristics": [
-      "종이색 바탕, 강조색은 테라코타 하나, 그림자와 그라데이션 없음",
+      "나뭇결 바탕 위에 종이색 판, 강조색은 테라코타 하나, 그림자와 그라데이션 없음",
       "누를 수 있는 것은 최소 48px, 글자는 16px 이상(위치 안내와 검색 결과의 곁글만 14px)",
       "알약형 버튼과 둥근 사각형 상자 두 가지 형태만 사용(시작 화면의 노렌 하나만 예외)",
       "웹폰트는 Noto Serif KR 하나만 사용(시작 화면 363KB, 결과 화면까지 493KB)",
@@ -252,7 +267,12 @@
       },
       {
         "name": "The Both Faces Rule",
-        "body": "안내 상자의 안쪽 면 명암비는 여유가 0.10뿐입니다. lower-paper나 clay-line을 바꾸면 안쪽 면도 함께 잽니다.",
+        "body": "상자의 테두리는 안쪽으로 lower-paper와, 바깥쪽으로 나뭇결과 맞닿으므로 세 면을 모두 잽니다. 안쪽 6.79:1·4.20:1, 바깥(나뭇결 가장 어두운 자리) 3.58:1·3.54:1입니다. counter-wood, lower-paper, clay-line 중 하나를 바꾸면 세 면을 다시 잽니다.",
+        "section": "colors"
+      },
+      {
+        "name": "The Text On Paper Rule",
+        "body": "글자는 나뭇결 위에 직접 놓지 않고 종이색 판 위에 둡니다. 나무 위에는 ink색 큰 제목과 장식만 놓습니다.",
         "section": "colors"
       },
       {
@@ -297,7 +317,8 @@
     ],
     "donts": [
       "Don't 귀여운 캐릭터, 마스코트, 이모지 장식, 둥글둥글한 만화풍 일러스트를 넣지 않습니다(사용자가 확정한 거부 사항).",
-      "Don't 그림자, 그라데이션, 블러를 추가하지 않습니다. 깊이는 경계선과 종이색 단 차이로만 만듭니다.",
+      "Don't 나뭇결 위에 글자를 직접 놓지 않습니다. 새 요소를 넣을 때는 종이색 바닥을 함께 줍니다.",
+      "Don't 그림자, 그라데이션, 블러를 추가하지 않습니다. 깊이는 나뭇결 위의 종이판, 경계선, 종이색 단 차이로만 만듭니다.",
       "Don't 웹폰트를 둘 이상 쓰지 않습니다.",
       "Don't 줄 안 버튼의 글자 크기를 16px 밑으로 줄이지 않습니다.",
       "Don't 비활성 상태에 disabled 속성을 쓰지 않습니다. aria-disabled를 씁니다.",
