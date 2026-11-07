@@ -18,40 +18,40 @@ colors:
   terracotta-ink-night: "#1c1a17"
 typography:
   display:
-    fontFamily: "-apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', 'Pretendard Variable', Pretendard, system-ui, 'Segoe UI', 'Malgun Gothic', 'Noto Sans KR', sans-serif"
+    fontFamily: "'Noto Serif KR', -apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', 'Pretendard Variable', Pretendard, system-ui, 'Segoe UI', 'Malgun Gothic', 'Noto Sans KR', sans-serif"
     fontSize: "3rem"
     fontWeight: 700
     lineHeight: 1.25
     letterSpacing: "-0.025em"
   headline:
-    fontFamily: "-apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', 'Pretendard Variable', Pretendard, system-ui, 'Segoe UI', 'Malgun Gothic', 'Noto Sans KR', sans-serif"
+    fontFamily: "'Noto Serif KR', -apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', 'Pretendard Variable', Pretendard, system-ui, 'Segoe UI', 'Malgun Gothic', 'Noto Sans KR', sans-serif"
     fontSize: "2.25rem"
     fontWeight: 700
     lineHeight: 1.11
     letterSpacing: "-0.025em"
   title:
-    fontFamily: "-apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', 'Pretendard Variable', Pretendard, system-ui, 'Segoe UI', 'Malgun Gothic', 'Noto Sans KR', sans-serif"
+    fontFamily: "'Noto Serif KR', -apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', 'Pretendard Variable', Pretendard, system-ui, 'Segoe UI', 'Malgun Gothic', 'Noto Sans KR', sans-serif"
     fontSize: "1.5rem"
     fontWeight: 700
     lineHeight: 1.33
     letterSpacing: "-0.025em"
   body:
-    fontFamily: "-apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', 'Pretendard Variable', Pretendard, system-ui, 'Segoe UI', 'Malgun Gothic', 'Noto Sans KR', sans-serif"
+    fontFamily: "'Noto Serif KR', -apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', 'Pretendard Variable', Pretendard, system-ui, 'Segoe UI', 'Malgun Gothic', 'Noto Sans KR', sans-serif"
     fontSize: "1rem"
     fontWeight: 400
     lineHeight: 1.625
   label:
-    fontFamily: "-apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', 'Pretendard Variable', Pretendard, system-ui, 'Segoe UI', 'Malgun Gothic', 'Noto Sans KR', sans-serif"
+    fontFamily: "'Noto Serif KR', -apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', 'Pretendard Variable', Pretendard, system-ui, 'Segoe UI', 'Malgun Gothic', 'Noto Sans KR', sans-serif"
     fontSize: "1.125rem"
     fontWeight: 600
     lineHeight: 1.56
   button:
-    fontFamily: "-apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', 'Pretendard Variable', Pretendard, system-ui, 'Segoe UI', 'Malgun Gothic', 'Noto Sans KR', sans-serif"
+    fontFamily: "'Noto Serif KR', -apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', 'Pretendard Variable', Pretendard, system-ui, 'Segoe UI', 'Malgun Gothic', 'Noto Sans KR', sans-serif"
     fontSize: "1rem"
     fontWeight: 600
     lineHeight: 1.3
   caption:
-    fontFamily: "-apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', 'Pretendard Variable', Pretendard, system-ui, 'Segoe UI', 'Malgun Gothic', 'Noto Sans KR', sans-serif"
+    fontFamily: "'Noto Serif KR', -apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', 'Pretendard Variable', Pretendard, system-ui, 'Segoe UI', 'Malgun Gothic', 'Noto Sans KR', sans-serif"
     fontSize: "0.875rem"
     fontWeight: 400
     lineHeight: 1.43
@@ -137,7 +137,7 @@ components:
 - 종이색 바탕, 강조색은 테라코타 하나, 그림자와 그라데이션 없음
 - 누를 수 있는 것은 최소 48px, 글자는 16px 이상(위치 안내와 검색 결과의 곁글만 14px)
 - 알약형 버튼과 둥근 사각형 상자 두 가지 형태만 사용
-- 웹폰트 없이 시스템 글꼴 스택 사용(첫 화면 전송량 0KB)
+- 웹폰트는 Noto Serif KR 하나만 사용(시작 화면 363KB, 결과 화면까지 493KB)
 - 밝은 화면과 어두운 화면이 같은 구조로 짝을 이룸
 
 ## Colors
@@ -163,9 +163,9 @@ components:
 
 ## Typography
 
-**Display / Body / Label Font:** 시스템 글꼴 스택 하나(`-apple-system`, `Apple SD Gothic Neo`, `Pretendard Variable`, `Pretendard`, `system-ui`, `Segoe UI`, `Malgun Gothic`, `Noto Sans KR`, `sans-serif`)
+**Display / Body / Label Font:** Noto Serif KR 하나(`next/font/google`로 내려받음). 대비책으로 시스템 글꼴 스택(`-apple-system`, `Apple SD Gothic Neo`, `Pretendard Variable`, `Pretendard`, `system-ui`, `Segoe UI`, `Malgun Gothic`, `Noto Sans KR`, `sans-serif`)을 뒤에 둡니다.
 
-**Character:** 라틴과 한글을 짝으로 쓰도록 만들어진 시스템 글꼴이라 "240m · 도보 4분"처럼 한 줄 안에서 두 글꼴이 나란히 놓여도 고릅니다. Pretendard를 설치한 기기에서는 비용 없이 그 글꼴로 보입니다.
+**Character:** 간판처럼 또렷한 명조 계열이라 "일본의 작은 노포" 분위기의 바탕이 됩니다. 라틴과 한글을 한 글꼴로 그리므로 "240m · 도보 4분"처럼 한 줄 안에서 두 글꼴이 나란히 놓이지 않습니다.
 
 ### Hierarchy
 - **Display** (700, 3rem, 1.25, `-0.025em`): 결과 화면에서 고른 음식 종류 이름 하나에만 씁니다. 강조색으로 칠합니다.
@@ -179,7 +179,7 @@ components:
 ### Named Rules
 **The 16px Floor Rule.** 서서 보는 화면이므로 버튼, 가게 이름, 거리, 날짜의 글자 하한은 16px입니다. 버튼 글자를 줄이는 방식으로 줄 안의 작은 버튼을 만들지 않습니다. 줄이는 것은 좌우 여백뿐입니다. 14px(Caption)는 위 Hierarchy에 나열한 곁글에만 남아 있으며, 새로 늘리지 않습니다.
 
-**The No Webfont Rule.** 웹폰트를 추가하지 않습니다. Pretendard 통짜는 첫 화면 전송량이 2,009KB, Noto Sans KR은 213KB이지만 시스템 글꼴은 0KB입니다. 30초 쓰고 닫는 도구에 그 비용은 맞지 않습니다.
+**The One Webfont Rule.** 웹폰트는 Noto Serif KR 하나만 씁니다. 느린 4G 수준 회선에서 재 본 결과 시작 화면 363KB, 가게 이름까지 나온 결과 화면 493KB이고 화면 흔들림(CLS)은 0.0081이었습니다. 글꼴을 더하거나 바꾸기 전에 같은 방식으로 다시 재서 이 기준(흔들림 0.1 미만)을 넘지 않는지 확인합니다. 고운바탕은 1.7MB라 쓰지 않았습니다.
 
 **The Tabular Distance Rule.** 거리처럼 숫자가 세로로 늘어서는 곳에는 `tabular-nums`를 써서 자리폭을 고정합니다.
 
@@ -254,7 +254,7 @@ components:
 ### Don't:
 - **Don't** 귀여운 캐릭터, 마스코트, 이모지 장식, 둥글둥글한 만화풍 일러스트를 넣지 않습니다(사용자가 확정한 거부 사항).
 - **Don't** 그림자, 그라데이션, 블러를 추가하지 않습니다. 깊이는 경계선과 종이색 단 차이로만 만듭니다.
-- **Don't** 웹폰트를 추가하지 않습니다. 라틴 전용 웹폰트는 한 줄 안에서 두 글꼴을 나란히 놓게 하므로 더욱 그렇습니다.
+- **Don't** 웹폰트를 둘 이상 쓰지 않습니다. 라틴 전용 웹폰트는 한 줄 안에서 두 글꼴을 나란히 놓게 하므로 더욱 그렇습니다.
 - **Don't** 줄 안 버튼의 글자 크기를 16px 밑으로 줄이지 않습니다.
 - **Don't** 비활성 상태에 `disabled` 속성을 쓰지 않습니다. 포커스가 떨어져 키보드·낭독기 사용자가 자기 위치를 잃습니다.
 - **Don't** `btn-danger-quiet`에 강조색을 쓰거나 `btn-quiet`와 같은 옷으로 되돌리지 않습니다. 걸으면서 한 손으로 누르는 사람이 "전체 지우기"와 "돌아가기"를 헷갈립니다.
