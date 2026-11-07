@@ -22,14 +22,14 @@ export const metadata: Metadata = {
   적지 않으면 어두운 화면에서 흰 스크롤바가 종이색 바탕 옆에 그대로 남는다.
 
   themeColor: 휴대폰 브라우저의 주소 표시줄 색이다. 화면 바탕과 같은 값을 주어
-  화면이 표시줄 아래에서 잘려 보이지 않게 한다. globals.css의 --background와 같은 값이라
+  화면이 표시줄 아래에서 잘려 보이지 않게 한다. globals.css의 --wood-color와 같은 값이라
   한쪽만 고치면 어긋난다 — 색을 바꿀 때는 두 곳을 같이 본다.
 */
 export const viewport: Viewport = {
   colorScheme: "light dark",
   themeColor: [
-    { media: "(prefers-color-scheme: light)", color: "#faf9f7" },
-    { media: "(prefers-color-scheme: dark)", color: "#171513" },
+    { media: "(prefers-color-scheme: light)", color: "#dfc9a3" },
+    { media: "(prefers-color-scheme: dark)", color: "#2e2218" },
   ],
 };
 
