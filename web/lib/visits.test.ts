@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
-  AVOID_KEY, browserStore, forgetAll, forgetVisit, readAvoidOn, readVisits, recordVisit,
+  AVOID_KEY, browserStore, forgetAll, forgetVisit, kakaoPlaceUrl, readAvoidOn, readVisits, recordVisit,
   restoreVisits, RETENTION_DAYS, STORAGE_KEY, writeAvoidOn, type Store,
 } from "./visits";
 
@@ -108,7 +108,8 @@ describe("기록 저장과 조회", () => {
   });
 
   // **이 시험이 카카오 약관 경계를 지킨다.** 설계 문서 9절이 근거다 — 카카오는
-  // 사용자가 직접 고른 장소의 ID·상호와 우리가 만든 날짜만 저장을 허용했고,
+  // 사용자가 직접 고른 장소의 ID·상호·place_url(데브톡 글 151265)과 우리가 만든 날짜만
+  // 저장을 허용했고,
   // 분류 문자열을 입력으로 계산해 낸 우리 종류 식별자는 "응답에 기반한 가공
   // 데이터"로 읽힐 여지가 있어 일부러 뺐다(같은 문서 11-2절이 이 시험을 필수로
   // 지정했고 13절 완료 조건에도 있다).
@@ -122,6 +123,14 @@ describe("기록 저장과 조회", () => {
     const raw = JSON.parse(store.data[STORAGE_KEY]) as Record<string, unknown>[];
     expect(raw).toHaveLength(1);
     expect(Object.keys(raw[0]).sort()).toEqual(["at", "placeId", "placeName"]);
+  });
+
+  // 주소를 넘기지 않으면 키 집합이 위 시험 그대로여야 한다. 주소를 항상 빈 값으로라도
+  // 쓰기 시작하면 옛 기록과 새 기록의 모양이 갈린다.
+  it("주소를 넘기지 않으면 주소 키를 쓰지 않는다", () => {
+    const store = fakeStore();
+    recordVisit(store, "p1", "연돈", NOW);
+    expect(store.data[STORAGE_KEY]).not.toContain("placeUrl");
   });
 
   it("지울 때도 보관 기간 지난 기록은 저장소에서 함께 지운다", () => {
@@ -394,5 +403,77 @@ describe("브라우저 저장소 얻기", () => {
     // 만지는 순간 예외를 던진다.
     vi.stubGlobal("localStorage", throwingStore());
     expect(browserStore()).toBeNull();
+  });
+});
+
+
+describe("가게 페이지 주소(place_url)", () => {
+  // 카카오 담당자가 사용자가 직접 담은 장소의 ID·상호·place_url 저장을 허용했다(데브톡 글 151265).
+  // 조회 응답은 http 주소를 주므로 https로 올려 저장한다.
+  it("카카오 가게 페이지 주소를 https로 올려 저장하고 다시 읽는다", () => {
+    const store = fakeStore();
+    recordVisit(store, "p1", "연돈", NOW, "http://place.map.kakao.com/12345");
+    expect(readVisits(store, NOW)[0].placeUrl).toBe("https://place.map.kakao.com/12345");
+    const raw = JSON.parse(store.data[STORAGE_KEY]) as Record<string, unknown>[];
+    expect(Object.keys(raw[0]).sort()).toEqual(["at", "placeId", "placeName", "placeUrl"]);
+  });
+
+  // 저장소는 사용자가 직접 고칠 수 있고 이 값은 화면에서 링크가 된다. 그래서 쓸 때와 읽을 때
+  // 둘 다 거른다. 하나만 두면 다른 쪽 경로로 들어온 값이 그대로 링크가 된다.
+  it.each([
+    ["스크립트 주소", "javascript:alert(1)"],
+    ["다른 도메인", "https://evil.example/12345"],
+    ["도메인을 앞에 붙인 위장", "https://place.map.kakao.com.evil.example/1"],
+    ["계정 정보를 끼운 위장", "https://place.map.kakao.com@evil.example/1"],
+    ["포트를 지정한 주소", "https://place.map.kakao.com:8443/1"],
+    // 호스트는 맞고 프로토콜만 다르다. 이 경우는 프로토콜 검사만 막는다(호스트 검사는 통과한다).
+    ["http·https가 아닌 프로토콜", "ftp://place.map.kakao.com/1"],
+    ["빈 문자열", ""],
+  ])("안전하지 않은 주소는 저장하지 않는다: %s", (_name, url) => {
+    const store = fakeStore();
+    recordVisit(store, "p1", "연돈", NOW, url);
+    expect(store.data[STORAGE_KEY]).not.toContain("placeUrl");
+    expect(readVisits(store, NOW)).toHaveLength(1);
+  });
+
+  it("저장소에서 고쳐진 안전하지 않은 주소는 읽을 때 걷어 내고 기록은 남긴다", () => {
+    const store = fakeStore({
+      [STORAGE_KEY]: JSON.stringify([
+        { placeId: "p1", placeName: "연돈", at: NOW.toISOString(), placeUrl: "javascript:alert(1)" },
+        { placeId: "p2", placeName: "가게2", at: NOW.toISOString(), placeUrl: 42 },
+      ]),
+    });
+    const visits = readVisits(store, NOW);
+    expect(visits.map((v) => v.placeId).sort()).toEqual(["p1", "p2"]);
+    expect(visits.every((v) => v.placeUrl === undefined)).toBe(true);
+  });
+
+  it("주소가 없는 옛 기록도 그대로 읽힌다", () => {
+    const store = fakeStore({
+      [STORAGE_KEY]: JSON.stringify([{ placeId: "p1", placeName: "연돈", at: NOW.toISOString() }]),
+    });
+    expect(readVisits(store, NOW)).toEqual([{ placeId: "p1", placeName: "연돈", at: NOW.toISOString() }]);
+  });
+
+  it("같은 가게를 다시 정하면 새 주소로 바뀐다", () => {
+    const store = fakeStore();
+    recordVisit(store, "p1", "연돈", daysAgo(3), "http://place.map.kakao.com/1");
+    recordVisit(store, "p1", "연돈", NOW, "http://place.map.kakao.com/2");
+    expect(readVisits(store, NOW)[0].placeUrl).toBe("https://place.map.kakao.com/2");
+  });
+
+  it("되돌리기가 주소를 그대로 되살린다", () => {
+    const store = fakeStore();
+    recordVisit(store, "p1", "연돈", NOW, "http://place.map.kakao.com/1");
+    const before = readVisits(store, NOW);
+    forgetVisit(store, "p1", NOW);
+    restoreVisits(store, before, NOW);
+    expect(readVisits(store, NOW)[0].placeUrl).toBe("https://place.map.kakao.com/1");
+  });
+
+  it("kakaoPlaceUrl은 값이 문자열이 아니면 null이다", () => {
+    expect(kakaoPlaceUrl(undefined)).toBeNull();
+    expect(kakaoPlaceUrl(null)).toBeNull();
+    expect(kakaoPlaceUrl(7)).toBeNull();
   });
 });

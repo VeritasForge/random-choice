@@ -2,8 +2,9 @@
  * 사용자가 "여기로 정했어요"를 누른 가게의 기록.
  *
  * **무엇을 저장하는가가 이 파일의 전부다.** 카카오는 응답 결과의 저장을 금지하지만,
- * 사용자가 직접 찜하거나 담은 장소의 장소ID·상호는 저장을 명시적으로 허용했다
- * (설계 문서 9절에 담당자 답변 원문이 있다). 그래서 여기 담기는 것은 셋뿐이다.
+ * 사용자가 직접 찜하거나 담은 장소의 장소ID·상호·place_url은 저장을 명시적으로 허용했다
+ * (설계 문서 9절과 카카오 데브톡 글 151265에 담당자 답변이 있다). 그래서 여기 담기는 것은
+ * 장소ID·상호·가게 페이지 주소(placeUrl)·우리가 만든 날짜뿐이다.
  *
  * **음식 종류는 넣지 않는다.** 종류 식별자는 카카오 분류 문자열을 입력으로 계산해 낸
  * 값이라 "응답에 기반한 가공 데이터"로 읽힐 여지가 있고, 종류 회피 자체가 효과의
@@ -16,7 +17,59 @@ export type Visit = {
   placeName: string;
   /** ISO 8601 문자열. 우리가 만든 값이다. */
   at: string;
+  /**
+   * 카카오 가게 페이지 주소. kakaoPlaceUrl을 통과한 값만 담긴다(없으면 키 자체가 없다).
+   * 주소를 저장하기 전에 정한 옛 기록과 카카오가 주소를 비워 보낸 가게에는 없다.
+   * 기록은 보관 기간(RETENTION_DAYS)이 지나면 사라지므로, 옛 기록은 길어야 그 기간만 남는다.
+   */
+  placeUrl?: string;
 };
+
+/** 카카오가 place_url로 내려 주는 가게 페이지의 호스트. 이 호스트만 링크로 쓴다. */
+const PLACE_URL_HOST = "place.map.kakao.com";
+
+/**
+ * 카카오 가게 페이지 주소만 통과시키고 https로 올려 돌려준다. 아니면 null.
+ *
+ * 저장소는 사용자가 개발자 도구로 고칠 수 있고, 이 값은 화면에서 `<a href>`가 된다.
+ * 거르지 않으면 `javascript:` 주소나 다른 사이트 주소가 링크로 열린다. 그래서 호스트를
+ * 문자열 비교가 아니라 URL로 해석한 hostname으로 정확히 맞춘다(`place.map.kakao.com.evil.example`
+ * 이나 `place.map.kakao.com@evil.example` 같은 위장을 문자열 포함 검사는 통과시킨다).
+ * 계정 정보와 포트가 붙은 주소도 거부한다. 카카오가 호스트를 바꾸면 링크가 조용히 사라지지만,
+ * 잘못된 곳으로 열리는 것보다 낫다.
+ */
+export function kakaoPlaceUrl(value: unknown): string | null {
+  if (typeof value !== "string" || value === "") {
+    return null;
+  }
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    return null;
+  }
+  if (
+    (url.protocol !== "http:" && url.protocol !== "https:") ||
+    url.hostname !== PLACE_URL_HOST ||
+    url.username !== "" ||
+    url.password !== "" ||
+    url.port !== ""
+  ) {
+    return null;
+  }
+  url.protocol = "https:";
+  return url.toString();
+}
+
+/**
+ * 항목을 우리가 아는 필드만 남기고 주소를 검증한 모양으로 만든다.
+ * 읽을 때와 쓸 때 둘 다 거치게 해, 저장소에 들어 있는 값이든 새로 쓰는 값이든 같은 규칙을 받는다.
+ */
+function sanitize(v: Visit): Visit {
+  const url = kakaoPlaceUrl(v.placeUrl);
+  const base = { placeId: v.placeId, placeName: v.placeName, at: v.at };
+  return url === null ? base : { ...base, placeUrl: url };
+}
 
 /**
  * 브라우저 저장소가 갖춰야 하는 최소한의 모양.
@@ -111,7 +164,7 @@ function load(store: Store | null): Visit[] {
     // (visits.test.ts의 "배열이 아니면 빈 목록을 돌려준다").
     //
     // 항목별로 거른다. 하나가 망가졌다고 전부 버리면 사용자 기록이 통째로 사라진다.
-    return (parsed as unknown[]).filter(isVisit);
+    return (parsed as unknown[]).filter(isVisit).map(sanitize);
   } catch {
     return [];
   }
@@ -122,7 +175,7 @@ function save(store: Store | null, visits: Visit[]): void {
     return;
   }
   try {
-    store.setItem(STORAGE_KEY, JSON.stringify(visits));
+    store.setItem(STORAGE_KEY, JSON.stringify(visits.map(sanitize)));
   } catch {
     // 용량이 찼거나 저장이 막혔다. 사용자가 할 수 있는 일이 없으므로 조용히 포기한다.
     // 기억 없는 상태로 계속 동작하는 것이 오류 화면을 띄우는 것보다 낫다.
@@ -152,18 +205,22 @@ export function readVisits(store: Store | null, now: Date = new Date()): Visit[]
  * 장소 ID가 비면 아무것도 하지 않는다. 카카오는 ID가 빈 응답도 주는데,
  * 빈 문자열을 열쇠로 쓰면 그 뒤 회피 기간 내내 ID가 빈 모든 가게가 함께 사라진다.
  * 화면은 그런 가게에 "여기로 정했어요" 버튼을 아예 그리지 않는다.
+ *
+ * placeUrl은 now 뒤에 둔다. 앞의 네 인자 모양을 쓰는 호출이 많아서(시험 포함) 순서를 바꾸지 않으려는
+ * 것이다. 빈 문자열이나 안전하지 않은 주소는 sanitize가 걷어 내므로 키가 생기지 않는다.
  */
 export function recordVisit(
   store: Store | null,
   placeId: string,
   placeName: string,
   now: Date = new Date(),
+  placeUrl: string = "",
 ): void {
   if (placeId === "") {
     return;
   }
   const kept = withoutExpired(load(store), now).filter((v) => v.placeId !== placeId);
-  save(store, [...kept, { placeId, placeName, at: now.toISOString() }]);
+  save(store, [...kept, { placeId, placeName, at: now.toISOString(), placeUrl }]);
 }
 
 /**

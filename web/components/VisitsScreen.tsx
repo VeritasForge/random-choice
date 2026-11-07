@@ -144,10 +144,27 @@ export default function VisitsScreen({
                 // 새로 넣으므로 같은 ID가 둘일 수 없다.
                 <li
                   key={visit.placeId}
-                  className="flex items-center justify-between gap-3 rounded-xl border border-line bg-background p-3"
+                  className="row flex items-center justify-between gap-3 rounded-xl border border-line p-3"
                 >
                   <span className="flex min-w-0 flex-col gap-0.5">
-                    <span className="truncate text-lg font-semibold">{visit.placeName}</span>
+                    {/*
+                      주소가 있는 기록만 링크다. 주소를 저장하기 전에 정한 옛 기록(길어야 보관 기간만큼
+                      남는다)과 카카오가 주소를 비워 보낸 가게에는 없어서 글자로 그린다.
+                      링크의 눌림 영역을 줄 전체로 넓히는 방법과 까닭은 app/globals.css의
+                      .row-link와 ResultScreen의 목록 줄이 설명한다(지우기 버튼은 .row-action으로 위에 올린다).
+                    */}
+                    {visit.placeUrl !== undefined ? (
+                      <a
+                        href={visit.placeUrl}
+                        target="_blank"
+                        rel="noreferrer noopener"
+                        className="row-link truncate text-lg font-semibold underline decoration-line underline-offset-4 hover:decoration-current"
+                      >
+                        {visit.placeName}
+                      </a>
+                    ) : (
+                      <span className="truncate text-lg font-semibold">{visit.placeName}</span>
+                    )}
                     <time dateTime={visit.at} className="text-base text-muted">
                       {DATE_FORMAT.format(new Date(visit.at))}
                     </time>
@@ -160,7 +177,7 @@ export default function VisitsScreen({
                     type="button"
                     onClick={() => onForget(visit.placeId)}
                     aria-label={`${visit.placeName} 기록 지우기`}
-                    className="btn btn-quiet btn-sm shrink-0"
+                    className="btn btn-quiet btn-sm row-action shrink-0"
                   >
                     지우기
                   </button>
