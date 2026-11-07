@@ -7,16 +7,16 @@
       "counter-wood": {
         "role": "neutral",
         "displayName": "생나무 카운터",
-        "canonical": "#dfc9a3",
+        "canonical": "#e8d6b4",
         "tonalRamp": [
-          "#0f0c05",
-          "#392b14",
-          "#664e24",
-          "#977335",
-          "#c09449",
-          "#d1b17b",
-          "#e5d3b3",
-          "#f6efe5"
+          "#100c05",
+          "#3b2c12",
+          "#695020",
+          "#9c7730",
+          "#c69944",
+          "#d5b476",
+          "#e7d4b1",
+          "#f7f0e4"
         ]
       },
       "paper": {
@@ -122,6 +122,36 @@
           "#ec855a",
           "#ffab80",
           "#ffe3d1"
+        ]
+      },
+      "noren-indigo": {
+        "role": "decorative",
+        "displayName": "쪽빛 남색",
+        "canonical": "#22385e",
+        "tonalRamp": [
+          "#05090f",
+          "#142138",
+          "#253c65",
+          "#365996",
+          "#4b75be",
+          "#7c9bd0",
+          "#b4c6e4",
+          "#e5ebf6"
+        ]
+      },
+      "noren-cream": {
+        "role": "decorative",
+        "displayName": "노렌 크림색",
+        "canonical": "#f4ecd8",
+        "tonalRamp": [
+          "#100d04",
+          "#3c2f11",
+          "#6b551e",
+          "#9f7e2d",
+          "#c9a240",
+          "#d8bb74",
+          "#e9d8af",
+          "#f7f1e3"
         ]
       }
     },
@@ -244,16 +274,16 @@
       "name": "Noren Title",
       "kind": "other",
       "refersTo": "noren-title",
-      "description": "시작 화면의 서비스 이름. 노렌(가게 입구의 천)에 단어마다 한 폭씩 얹는다. 이 화면 한 곳에만 쓴다.",
+      "description": "시작 화면의 서비스 이름. 쪽빛 남색 노렌에 단어마다 한 폭씩 얹고, 막대에 걸린 고리와 점선 박음질을 둔다. 이 화면 한 곳에만 쓴다.",
       "html": "<div class=\"ds-noren\"><div class=\"ds-noren-rod\"></div><h1 class=\"ds-noren-title\"><span>오늘은</span> <span>뭐</span> <span>먹지?</span></h1></div>",
-      "css": ".ds-noren{display:flex;flex-direction:column;width:fit-content;max-width:100%} .ds-noren-rod{height:6px;margin:0 -8px;border-radius:9999px;background:var(--foreground,#1c1a17)} .ds-noren-title{display:flex;justify-content:center;gap:3px;margin:0;font-size:clamp(1.75rem,9vw,2.25rem);font-weight:700;line-height:1;letter-spacing:-.025em;white-space:nowrap;word-break:keep-all} .ds-noren-title span{display:flex;align-items:center;height:96px;padding:0 .75rem;border-radius:0 0 2px 2px;background:var(--accent,#b8552f);color:var(--accent-ink,#ffffff)}"
+      "css": ".ds-noren{display:flex;flex-direction:column;width:fit-content;max-width:100%} .ds-noren-rod{height:6px;margin:0 -8px;border-radius:9999px;background:var(--foreground,#1c1a17)} .ds-noren-title{display:flex;justify-content:center;gap:5px;margin:0;font-size:clamp(1.75rem,9vw,2.25rem);font-weight:700;line-height:1;letter-spacing:-.025em;white-space:nowrap;word-break:keep-all} .ds-noren-title span{position:relative;display:flex;align-items:center;height:96px;padding:0 .75rem;border-radius:0 0 3px 3px;background:var(--noren,#22385e);color:var(--noren-ink,#f4ecd8)} .ds-noren-title span::before{content:'';position:absolute;top:-10px;left:50%;z-index:1;width:16px;height:10px;transform:translateX(-50%);border-radius:3px 3px 0 0;background:var(--noren,#22385e)} .ds-noren-title span::after{content:'';position:absolute;left:6px;right:6px;top:0;bottom:6px;border:1px dashed color-mix(in oklab,var(--noren-ink,#f4ecd8) 45%,transparent);border-top:0;border-radius:0 0 2px 2px;pointer-events:none}"
     }
   ],
   "narrative": {
     "northStar": "단골집 주인장",
     "overview": "묻지 않고 내놓고, 싫다면 바로 바꿔 주고, 말이 짧은 가게 주인을 화면의 성격으로 삼습니다. 이 성격은 장식이 아니라 구조로 나타납니다. 결과는 한 덩어리로 단정하게 내놓고, 흐름은 재확인 없이 짧게 이어지며, 모든 선택은 버튼 하나로 되돌릴 수 있습니다. 색, 글꼴, 움직임은 이 세 가지를 방해하지 않는 선에서만 고릅니다.\n\n분위기는 따뜻하고, 차분하면서 또렷하며, 유쾌합니다. 따뜻함은 종이색 바탕과 테라코타 한 가지 강조색에서, 또렷함은 모든 글자와 경계선이 지키는 명암비에서 나옵니다. 유쾌함은 그림이나 장식이 아니라 말투에서 나옵니다.",
     "keyCharacteristics": [
-      "나뭇결 바탕 위에 종이색 판, 강조색은 테라코타 하나, 그림자와 그라데이션 없음",
+      "세로 나뭇결(옹이 포함) 바탕 위에 종이색 판, 강조색은 테라코타 하나(노렌의 남색은 장식), 그림자와 그라데이션 없음",
       "누를 수 있는 것은 최소 48px, 글자는 16px 이상(위치 안내와 검색 결과의 곁글만 14px)",
       "알약형 버튼과 둥근 사각형 상자 두 가지 형태만 사용(시작 화면의 노렌 하나만 예외)",
       "웹폰트는 Noto Serif KR 하나만 사용(시작 화면 363KB, 결과 화면까지 493KB)",
@@ -262,12 +292,12 @@
     "rules": [
       {
         "name": "The One Voice Rule",
-        "body": "테라코타는 결과와 주요 버튼에만 씁니다. 한 화면에서 강조색이 칠해진 버튼은 하나를 넘지 않습니다. 시작 화면의 노렌(장식)만 예외입니다.",
+        "body": "테라코타는 결과와 주요 버튼에만 씁니다. 한 화면에서 강조색이 칠해진 버튼은 하나를 넘지 않습니다. 시작 화면의 노렌은 장식이고 강조색이 아닌 남색을 씁니다.",
         "section": "colors"
       },
       {
         "name": "The Both Faces Rule",
-        "body": "상자의 테두리는 안쪽으로 lower-paper와, 바깥쪽으로 나뭇결과 맞닿으므로 세 면을 모두 잽니다. 안쪽 6.79:1·4.20:1, 바깥(나뭇결 가장 어두운 자리) 3.58:1·3.54:1입니다. counter-wood, lower-paper, clay-line 중 하나를 바꾸면 세 면을 다시 잽니다.",
+        "body": "상자의 테두리는 안쪽으로 lower-paper와, 바깥쪽으로 나뭇결과 맞닿으므로 세 면을 모두 잽니다. 안쪽 6.79:1·4.20:1, 바깥(나뭇결 가장 어두운 자리, 옹이 제외) 3.15:1·3.85:1입니다. counter-wood, lower-paper, clay-line 중 하나를 바꾸면 세 면을 다시 잽니다.",
         "section": "colors"
       },
       {
@@ -318,6 +348,7 @@
     "donts": [
       "Don't 귀여운 캐릭터, 마스코트, 이모지 장식, 둥글둥글한 만화풍 일러스트를 넣지 않습니다(사용자가 확정한 거부 사항).",
       "Don't 나뭇결 위에 글자를 직접 놓지 않습니다. 새 요소를 넣을 때는 종이색 바닥을 함께 줍니다.",
+      "Don't 노렌 밖에서 남색을 쓰지 않습니다.",
       "Don't 그림자, 그라데이션, 블러를 추가하지 않습니다. 깊이는 나뭇결 위의 종이판, 경계선, 종이색 단 차이로만 만듭니다.",
       "Don't 웹폰트를 둘 이상 쓰지 않습니다.",
       "Don't 줄 안 버튼의 글자 크기를 16px 밑으로 줄이지 않습니다.",
