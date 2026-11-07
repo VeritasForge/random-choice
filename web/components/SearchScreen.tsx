@@ -3,10 +3,10 @@
 import { useState } from "react";
 import { fetchSpots, NearbyError } from "@/lib/api";
 import { errorNotice } from "@/lib/errors";
-import { appendSpots, queryForPage, type Spot } from "@/lib/spots";
+import { appendSpots, foldSpots, queryForPage, type Spot } from "@/lib/spots";
 
 type Props = {
-  /** 시작 화면의 `OOO로 다시 찾기`가 이름으로 다시 찾지 못했을 때 입력창에 채워 둘 글자. */
+  /** 시작 화면의 `OOO 다시 찾기`가 이름으로 다시 찾지 못했을 때 입력창에 채워 둘 글자. */
   initialKeyword: string;
   onPick: (spot: Spot) => void;
   onBack: () => void;
@@ -37,6 +37,11 @@ export default function SearchScreen({ initialKeyword, onPick, onBack, picking }
   // 방금 어떤 글자로 찾았는지. 입력창을 고치는 도중에도 목록의 출처가 바뀌지
   // 않아야 하므로 keyword와 따로 둔다.
   const [searched, setSearched] = useState("");
+  // 받아 둔 목록을 다 펼쳤는지. 접는 규칙과 까닭은 lib/spots.ts의 foldSpots에 적어 두었다.
+  // 새로 찾을 때마다 다시 접힌다. 목록에서 파생되는 값(shown·hidden)은 state로 두지 않고
+  // 그릴 때마다 계산한다.
+  const [expanded, setExpanded] = useState(false);
+  const { shown, hidden } = foldSpots(spots, expanded);
 
   async function search(nextPage: number) {
     // 2쪽 이상(더 보기)은 입력창이 아니라 방금 찾았던 글자를 써야 한다 —
@@ -51,6 +56,7 @@ export default function SearchScreen({ initialKeyword, onPick, onBack, picking }
       // 카카오가 마지막 쪽을 되풀이해 줄 때 같은 장소가 끝없이 쌓이는 것을
       // 아무 시험도 막지 못한다.
       setSpots((prev) => (nextPage === 1 ? got.spots : appendSpots(prev, got.spots)));
+      if (nextPage === 1) setExpanded(false);
       setIsEnd(got.isEnd);
       setPage(nextPage);
       setSearched(trimmed);
@@ -126,7 +132,7 @@ export default function SearchScreen({ initialKeyword, onPick, onBack, picking }
       ) : null}
 
       <ul className="flex w-full flex-col gap-2">
-        {spots.map((spot, index) => (
+        {shown.map((spot, index) => (
           /*
             key에 목록 위치를 섞는 이유: 카카오는 식별자가 빈 장소도 준다. 빈 문자열을
             그대로 key로 쓰면 그런 장소가 둘 이상일 때 React가 엉뚱한 줄을 재사용한다.
@@ -165,10 +171,20 @@ export default function SearchScreen({ initialKeyword, onPick, onBack, picking }
         <p className="text-muted">그런 이름의 장소를 찾지 못했어요. 다른 말로 찾아보세요.</p>
       ) : null}
 
-      {spots.length > 0 && !isEnd ? (
+      {/*
+        접어 둔 것이 남아 있으면 이미 받아 둔 목록을 먼저 펼친다(카카오를 또 부르지 않는다).
+        다 펼친 뒤에야 다음 쪽을 받으러 간다.
+      */}
+      {spots.length > 0 && (hidden > 0 || !isEnd) ? (
         <button
           type="button"
-          onClick={loading || picking ? undefined : () => void search(page + 1)}
+          onClick={
+            loading || picking
+              ? undefined
+              : hidden > 0
+                ? () => setExpanded(true)
+                : () => void search(page + 1)
+          }
           aria-disabled={loading || picking}
           aria-busy={loading}
           className="btn btn-quiet w-full"
@@ -183,7 +199,7 @@ export default function SearchScreen({ initialKeyword, onPick, onBack, picking }
         검색어를 좁히는 것 말고는 방법이 없다. 그 사실을 알리지 않으면 사용자는
         `더 보기`가 사라진 것을 고장으로 받아들인다.
       */}
-      {spots.length > 0 && isEnd ? (
+      {spots.length > 0 && isEnd && hidden === 0 ? (
         <p className="text-sm text-muted">
           여기까지가 전부입니다. 못 찾으셨다면 `경주 보문단지`처럼 더 좁혀서 찾아보세요.
         </p>
@@ -199,8 +215,8 @@ export default function SearchScreen({ initialKeyword, onPick, onBack, picking }
           ? "선택한 곳 주변 음식점을 찾고 있습니다."
           : loading
             ? "장소를 찾고 있습니다."
-            : spots.length > 0
-              ? `${spots.length}곳을 찾았습니다.`
+            : shown.length > 0
+              ? `${shown.length}곳을 찾았습니다.`
               : ""}
       </p>
     </section>

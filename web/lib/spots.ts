@@ -59,7 +59,7 @@ export function queryForPage(page: number, keyword: string, searched: string): s
 }
 
 /**
- * `OOO로 다시 찾기`가 이름으로 다시 조회한 결과에서 기준점을 고른다.
+ * `OOO 다시 찾기`가 이름으로 다시 조회한 결과에서 기준점을 고른다.
  *
  * 카카오가 매긴 순위 그대로 1등을 쓴다. 좌표를 저장해 두지 않으므로(web/lib/anchor.ts)
  * 이름으로 다시 물어야 하는데, 같은 이름의 가게가 여럿이거나 그때와 카카오의 순위가
@@ -73,4 +73,27 @@ export function queryForPage(page: number, keyword: string, searched: string): s
 export function resolveAnchor(spots: readonly Spot[]): Extract<Anchor, { kind: "spot" }> | null {
   const top = spots[0];
   return top === undefined ? null : { kind: "spot", name: top.name, lat: top.lat, lng: top.lng };
+}
+
+/** 처음에 보여 주는 검색 결과 수. 카카오는 정확히 일치하는 장소를 맨 앞에 주고 잡음은 여섯째 줄쯤부터 늘어난다. */
+export const INITIAL_SPOTS = 5;
+
+/**
+ * 검색 결과를 처음에는 앞의 다섯 곳만 보여 주고, `더 보기`를 누르면 이미 받아 둔 나머지를
+ * 펼친다. 무엇을 보여 줄지만 정하고 **거르지도 순서를 바꾸지도 않는다.**
+ *
+ * 분류로 거르지 않는 이유: 서버가 주는 `category`는 대부분 비어 있다(2026-11-06 실측,
+ * 다섯 검색어 각 15건). `경주역 택시승강장`·`유실물센터`·`정류소`도 분류가 비어 있어
+ * 분류로는 잡음의 일부만 잡히고, 반대로 `첨성대`처럼 분류가 빈 좋은 후보를 잃을 위험이 있다.
+ * 설계 문서(docs/superpowers/specs/2026-09-20-move-search-location-design.md 4-3절)가
+ * 걸러내지 않기로 한 것과 같은 이유다.
+ */
+export function foldSpots(
+  spots: readonly Spot[],
+  expanded: boolean,
+): { shown: Spot[]; hidden: number } {
+  if (expanded || spots.length <= INITIAL_SPOTS) {
+    return { shown: [...spots], hidden: 0 };
+  }
+  return { shown: spots.slice(0, INITIAL_SPOTS), hidden: spots.length - INITIAL_SPOTS };
 }

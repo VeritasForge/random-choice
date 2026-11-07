@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { appendSpots, queryForPage, resolveAnchor, type Spot } from "./spots";
+import { appendSpots, foldSpots, INITIAL_SPOTS, queryForPage, resolveAnchor, type Spot } from "./spots";
 
 const spot = (id: string, name = `장소${id}`): Spot => ({
   id, name, address: "주소", category: "", lat: 35.8, lng: 129.2,
@@ -90,5 +90,48 @@ describe("다시 찾기 기준점 고르기", () => {
 
   it("결과가 없으면 null이다", () => {
     expect(resolveAnchor([])).toBeNull();
+  });
+});
+
+describe("검색 결과 접기", () => {
+  const many = (n: number) => Array.from({ length: n }, (_, i) => spot(String(i + 1)));
+
+  /**
+   * 카카오는 정확히 일치하는 장소를 맨 앞에 준다(2026-11-06 실측: `경주역`, `강남역 2호선`,
+   * `첨성대`, `홍대입구역 2호선`이 모두 1위). 잡음은 여섯째 줄쯤부터 늘어난다.
+   * 그래서 거르지 않고 순서를 그대로 둔 채 앞의 다섯 곳만 먼저 보여 준다.
+   */
+  it("접힌 상태에서는 앞의 다섯 곳만 카카오가 준 순서 그대로 보여 준다", () => {
+    const { shown, hidden } = foldSpots(many(15), false);
+    expect(shown.map((s) => s.id)).toEqual(["1", "2", "3", "4", "5"]);
+    expect(hidden).toBe(10);
+  });
+
+  it("펼친 상태에서는 전부 보여 주고 숨긴 것이 없다", () => {
+    const { shown, hidden } = foldSpots(many(15), true);
+    expect(shown).toHaveLength(15);
+    expect(hidden).toBe(0);
+  });
+
+  it("딱 다섯 곳이면 숨길 것이 없다", () => {
+    const { shown, hidden } = foldSpots(many(INITIAL_SPOTS), false);
+    expect(shown).toHaveLength(INITIAL_SPOTS);
+    expect(hidden).toBe(0);
+  });
+
+  it("다섯 곳보다 적어도 그대로 보여 준다", () => {
+    const { shown, hidden } = foldSpots(many(2), false);
+    expect(shown).toHaveLength(2);
+    expect(hidden).toBe(0);
+  });
+
+  it("빈 목록은 빈 채로 둔다", () => {
+    expect(foldSpots([], false)).toEqual({ shown: [], hidden: 0 });
+  });
+
+  it("받은 목록을 바꾸지 않는다", () => {
+    const list = many(15);
+    foldSpots(list, false);
+    expect(list).toHaveLength(15);
   });
 });
