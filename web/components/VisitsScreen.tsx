@@ -76,7 +76,7 @@ export default function VisitsScreen({
           type="button"
           aria-pressed={avoidOn}
           onClick={onToggleAvoid}
-          className={`btn w-full justify-between gap-3 rounded-xl border p-4 text-left ${
+          className={`btn w-full justify-between gap-3 rounded-xl border bg-background p-4 text-left ${
             avoidOn ? "border-foreground" : "border-line"
           }`}
         >
@@ -128,7 +128,7 @@ export default function VisitsScreen({
         ) : null}
 
         {visits.length === 0 ? (
-          <div className="flex flex-col items-center gap-2 text-center">
+          <div className="flex w-full flex-col items-center gap-2 rounded-xl border border-line bg-background p-4 text-center">
             <p className="font-semibold">아직 정하신 곳이 없어요</p>
             <p className="max-w-xs text-base leading-relaxed text-muted">
               결과 화면에서 <strong className="font-semibold">여기로 정했어요</strong>를
@@ -144,7 +144,7 @@ export default function VisitsScreen({
                 // 새로 넣으므로 같은 ID가 둘일 수 없다.
                 <li
                   key={visit.placeId}
-                  className="flex items-center justify-between gap-3 rounded-xl border border-line p-3"
+                  className="flex items-center justify-between gap-3 rounded-xl border border-line bg-background p-3"
                 >
                   <span className="flex min-w-0 flex-col gap-0.5">
                     <span className="truncate text-lg font-semibold">{visit.placeName}</span>
@@ -168,7 +168,7 @@ export default function VisitsScreen({
               ))}
             </ul>
 
-            <p className="text-base text-muted">
+            <p className="rounded-xl border border-line bg-background px-4 py-2 text-base text-muted">
               {RETENTION_DAYS}일이 지난 기록은 저절로 사라져요
             </p>
           </>
