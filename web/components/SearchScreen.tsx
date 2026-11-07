@@ -82,7 +82,7 @@ export default function SearchScreen({ initialKeyword, onPick, onBack, picking }
         // 스스로 되돌아간 시작 화면을 다시 빼앗는다.
         onClick={picking ? undefined : onBack}
         aria-disabled={picking}
-        className="btn self-start text-muted underline underline-offset-4"
+        className="btn self-start rounded-full bg-background px-5 text-muted underline underline-offset-4"
       >
         돌아가기
       </button>
@@ -112,7 +112,7 @@ export default function SearchScreen({ initialKeyword, onPick, onBack, picking }
           value={keyword}
           onChange={(event) => setKeyword(event.target.value)}
           placeholder="경주, 강남역, 제주시 애월읍…"
-          className="min-w-0 flex-1 rounded-xl border border-line px-3 py-2"
+          className="min-w-0 flex-1 rounded-xl border border-line bg-background px-3 py-2"
         />
         <button
           type="submit"
@@ -125,7 +125,7 @@ export default function SearchScreen({ initialKeyword, onPick, onBack, picking }
       </form>
 
       {error !== null ? (
-        <div className="w-full rounded-xl border border-line p-3">
+        <div className="w-full rounded-xl border border-line bg-background p-3">
           <p className="font-semibold">{error.title}</p>
           <p className="text-sm text-muted">{error.description}</p>
         </div>
@@ -168,7 +168,9 @@ export default function SearchScreen({ initialKeyword, onPick, onBack, picking }
         첫 글자를 치는 순간 "찾지 못했어요"가 뜬다.
       */}
       {searched !== "" && spots.length === 0 && !loading && error === null ? (
-        <p className="text-muted">그런 이름의 장소를 찾지 못했어요. 다른 말로 찾아보세요.</p>
+        <p className="rounded-xl border border-line bg-background p-3 text-muted">
+          그런 이름의 장소를 찾지 못했어요. 다른 말로 찾아보세요.
+        </p>
       ) : null}
 
       {/*
@@ -200,7 +202,7 @@ export default function SearchScreen({ initialKeyword, onPick, onBack, picking }
         `더 보기`가 사라진 것을 고장으로 받아들인다.
       */}
       {spots.length > 0 && isEnd && hidden === 0 ? (
-        <p className="text-sm text-muted">
+        <p className="rounded-xl border border-line bg-background p-3 text-sm text-muted">
           여기까지가 전부입니다. 못 찾으셨다면 `경주 보문단지`처럼 더 좁혀서 찾아보세요.
         </p>
       ) : null}
