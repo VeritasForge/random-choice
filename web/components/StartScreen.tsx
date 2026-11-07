@@ -55,7 +55,8 @@ export default function StartScreen({
             </span>
           </h1>
         </div>
-        <p className="max-w-xs text-base leading-relaxed text-balance break-keep text-muted">
+        <div className="flex max-w-xs flex-col gap-3 rounded-xl border border-line bg-background px-4 py-3">
+        <p className="text-base leading-relaxed text-balance break-keep text-muted">
           주변에 있는 음식점을 보고 <strong className="font-semibold">무엇을 먹을지</strong>부터
           좁혀 드립니다. 후보를 직접 적지 않아도 됩니다.
         </p>
@@ -65,10 +66,11 @@ export default function StartScreen({
           (14일)·"최근에 정한 곳 빼기" 설정이다(lib/anchor.ts·lib/visits.ts의 저장 키).
           보관 기간은 RETENTION_DAYS를 쓴다.
         */}
-        <p className="max-w-xs text-base leading-relaxed text-balance break-keep text-muted">
+        <p className="text-base leading-relaxed text-balance break-keep text-muted">
           위치는 주변 음식점을 찾을 때만 쓰고 저장하지 않아요. 이 기기에는 마지막 검색어와
           정한 가게({RETENTION_DAYS}일)만 남아요.
         </p>
+        </div>
       </div>
 
       <div className="flex w-full flex-col items-center gap-3">
@@ -123,7 +125,7 @@ export default function StartScreen({
           type="button"
           onClick={loading ? undefined : onShowVisits}
           aria-disabled={loading}
-          className="btn text-muted underline underline-offset-4"
+          className="btn rounded-full bg-background px-5 text-muted underline underline-offset-4"
         >
           최근 기록 보기
         </button>
