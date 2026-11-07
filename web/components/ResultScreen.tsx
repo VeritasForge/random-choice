@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { Place } from "@/lib/api";
 import { distanceLabel } from "@/lib/reasons";
+import { RETENTION_DAYS } from "@/lib/visits";
 
 type Props = {
   cuisine: string;
@@ -26,6 +27,8 @@ type Props = {
   decidedIds: readonly string[];
   onReshuffle: () => void;
   onRestart: () => void;
+  /** 기록 화면으로 간다. 방금 정한 뒤의 마무리 상자가 부른다. */
+  onShowVisits: () => void;
   /**
    * 무엇을 기준으로 찾았는지 알리는 문구. lib/anchor.ts의 anchorLabel이 만든 것을
    * 그대로 받는다.
@@ -63,16 +66,21 @@ const ROW_CLASS =
  * 보이지 않는 겹침 층을 줄 전체에 깐다 — 마크업의 중첩은 그대로 없고 판정 영역만
  * 줄 전체로 넓어진다(app/globals.css에 까닭을 적어 두었다).
  *
- * 거리와 주소를 한 줄에 붙인 이유: 따로 두면 줄이 세 줄이 되어 네 곳을 보여 주는 데
+ * 거리와 주소를 한 문단에 붙인 이유: 따로 두면 줄이 세 줄이 되어 네 곳을 보여 주는 데
  * 휴대폰 한 화면을 다 쓴다. 거리를 앞에 두는 것은 점심에 먼저 보는 값이 그것이라서다.
  *
- * **곁글(거리·주소)도 16px이다.** 한때 14px로 내려 두고 "16px면 결과 네 줄이 한 화면에
- * 안 들어간다"고 적었는데, 2026-09-07에 390×844 브라우저로 직접 재 보니 사실이 아니었다.
- * 잰 값(줄 높이는 링크 있는 줄 80px, 링크 없는 줄 128px):
+ * 링크가 있는 줄은 상호와 주소를 두 줄까지 보여 준다(line-clamp-2). 글자 영역은 줄 폭에서
+ * 버튼을 뺀 190px 안팎이라 한 줄 자르기(truncate)는 주소를 거의 언제나 반 토막 냈다.
+ * 상호에는 밑줄을 상시 둔다. 터치 화면에는 hover가 없어 예전의 hover 밑줄은 링크라는
+ * 표시가 아예 되지 못했다.
  *
- * - 보통 결과 화면(안내 상자 없음): 필요 644px / 844px — 여유 200px, 스크롤 없음
- * - 가장 빡빡한 조합(두 줄짜리 안내 상자 + "다른 가게 보기" + 링크 없는 줄 하나):
- *   필요 858px — 14px 넘쳐 그만큼 스크롤이 생긴다(같은 조합이 14px일 때는 808px였다)
+ * **곁글(거리·주소)도 16px이다.** 2026-11-07에 390×844 브라우저로 잰 값
+ * (링크 있는 줄 높이 104px, 링크 없는 줄은 그보다 크다):
+ *
+ * - 세 곳, 안내 상자 없음: 844px — 스크롤 없음
+ * - 네 곳, 안내 상자 없음: 844px — 스크롤 없음
+ * - 네 곳 + 두 줄짜리 안내 상자: 1002px 안팎 — 그만큼 스크롤이 생긴다(줄을 한 줄로 자르던
+ *   때는 858px이었다). 주소가 두 줄을 넘으면 여전히 끝이 잘린다(경주역세권3로 13 등).
  *
  * 그 한 조합 때문에 화면 전체를 14px로 내리지는 않았다. 설계가 정한 글자 하한이 16px이고
  * (서서 보는 화면이다), 바깥 상자가 쓰는 min-h-dvh는 주소 표시줄을 뺀 높이라 실제
@@ -97,12 +105,12 @@ function PlaceRow({ place }: { place: Place }) {
           href={place.placeUrl}
           target="_blank"
           rel="noreferrer noopener"
-          className="row-link truncate text-lg font-semibold underline-offset-4 hover:underline"
+          className="row-link line-clamp-2 text-lg font-semibold underline decoration-line underline-offset-4 hover:decoration-current"
         >
           {place.name}
         </a>
       ) : (
-        <span className="truncate text-lg font-semibold">{place.name}</span>
+        <span className="text-lg font-semibold">{place.name}</span>
       )}
       {/*
         tabular-nums: 24m·49m·80m처럼 숫자가 세로로 늘어서므로 자리폭을 고정해 눈금처럼 읽히게 한다.
@@ -117,7 +125,7 @@ function PlaceRow({ place }: { place: Place }) {
       <span
         className={
           hasLink
-            ? "truncate text-base text-muted tabular-nums"
+            ? "line-clamp-2 text-base text-muted tabular-nums"
             : "text-base text-muted tabular-nums"
         }
       >
@@ -184,6 +192,7 @@ export default function ResultScreen({
   decidedIds,
   onReshuffle,
   onRestart,
+  onShowVisits,
   whereLabel,
   onChangeWhere,
   onBackToCandidates,
@@ -210,6 +219,11 @@ export default function ResultScreen({
     onDecide(place);
     setJustDecidedId(place.id);
   }
+
+  // 방금 정한 것이 실제로 기록되었을 때만 마무리를 그린다. 저장소가 막혀 기록이 안 되면
+  // 줄은 그대로 버튼이고(위 useEffect 주석), 그때 "남아요"라고 하면 거짓이 된다.
+  // 렌더 중에 계산하고 상태로 두지 않는다.
+  const closed = justDecidedId !== null && decidedIds.includes(justDecidedId);
 
   // 맨 위에 그릴 안내. 둘은 겹치지 않는다 — 회피가 꺼져 있으면 뺀 것이 없어
   // notice가 반드시 null이기 때문이다(web/lib/avoid.ts).
@@ -306,6 +320,25 @@ export default function ResultScreen({
             </li>
           ))}
         </ul>
+
+        {/*
+          정한 순간의 마무리. 결정은 이 서비스가 존재하는 이유인데, 지금까지는 버튼 글자가
+          "정하신 곳"으로 바뀔 뿐이라 끝났는지 알기 어려웠다. 한 마디로 매듭짓고, 무엇이
+          어디에 얼마나 남는지(제품 원칙 3)를 같은 자리에서 밝힌다. 가게 이름은 넣지 않는다:
+          `{이름}으로/로`처럼 받침에 따라 조사가 갈려 틀리기 쉽다.
+          움직임은 화면 전환과 같은 rise 하나뿐이고 reduced-motion에서 꺼진다.
+        */}
+        {closed ? (
+          <div className="rise flex w-full flex-col items-center gap-2 rounded-xl border border-line bg-surface p-3 text-center">
+            <p className="text-lg font-semibold">맛있게 드세요</p>
+            <p className="text-base leading-relaxed text-muted">
+              정하신 곳은 {RETENTION_DAYS}일 동안 기록에 남아요
+            </p>
+            <button type="button" onClick={onShowVisits} className="btn btn-quiet btn-sm">
+              기록 보기
+            </button>
+          </div>
+        ) : null}
 
         {/*
           눈에는 보이지 않고 화면 낭독기만 읽는 영역. 후보 화면과 같은 까닭이다 —

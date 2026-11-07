@@ -46,7 +46,7 @@ const MAX_NAME = 12;
  * 마지막으로 고른 장소의 이름을 읽는다. 없거나 읽지 못하면 null이다.
  *
  * 문자열이 아닌 값을 전부 null로 보는 이유: 그대로 화면에 그리면
- * `[object Object]로 다시 찾기` 같은 단추가 생긴다.
+ * `[object Object] 다시 찾기` 같은 단추가 생긴다.
  */
 export function readLastSpotName(store: Store | null): string | null {
   if (store === null) return null;
