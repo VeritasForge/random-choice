@@ -68,7 +68,7 @@ type View =
        * 검색 화면의 입력창을 채워 둘 글자. `다른 곳에서 찾기`와 `바꾸기`는
        * "다른" 곳·"바뀐" 기준을 찾겠다는 뜻이니 비운다.
        *
-       * `OOO로 다시 찾기`는 보통 이 화면을 거치지 않는다 — resumeAnchor가
+       * `OOO 다시 찾기`는 보통 이 화면을 거치지 않는다 — resumeAnchor가
        * 그 이름으로 곧장 결과를 구한다. 다만 그 이름으로 다시 찾지 못하면
        * (가게가 사라졌거나 이름이 바뀐 경우) 그 이름을 채운 채로 이 화면이
        * 뜬다 — 손으로 다시 찾으라는 뜻이다.
@@ -77,7 +77,7 @@ type View =
       /**
        * `돌아가기`를 누르면 되돌아갈 화면. 이 화면으로 들어오는 길이 셋이다 —
        * 시작 화면의 `다른 곳에서 찾기`, 후보·결과 화면의 `바꾸기`, 그리고
-       * `OOO로 다시 찾기`가 실패했을 때. 고정된 화면(예: 언제나 시작 화면)으로
+       * `OOO 다시 찾기`가 실패했을 때. 고정된 화면(예: 언제나 시작 화면)으로
        * 되돌리면 후보나 결과를 보다가 `바꾸기`를 누른 사람이 그 화면을 잃고
        * 시작 화면으로 튕긴다 — 옮긴 위치에서는 그 뒤 조회까지 다시 해야 하는
        * 큰 손실이다(candidates·result 갈래에 anchor·result를 들고 있는 것과
@@ -261,14 +261,14 @@ export default function Home() {
   }
 
   /**
-   * 시작 화면의 `OOO로 다시 찾기`를 눌렀을 때.
+   * 시작 화면의 `OOO 다시 찾기`를 눌렀을 때.
    *
    * 저장해 둔 것은 장소 이름뿐이고 좌표는 저장하지 않으므로(web/lib/anchor.ts),
    * 그 이름으로 카카오에 다시 물어 기준점을 새로 구한다. 검색 화면을 거치지
    * 않고 곧장 결과로 넘어가는 것이 이 함수의 핵심이다.
    *
    * 다시 찾지 못하면(이름이 바뀌었거나 없어진 가게, 또는 조회 자체가 실패)
-   * 그 이름을 채운 검색 화면을 열어 손으로 다시 찾게 한다 — `OOO로 다시 찾기`가
+   * 그 이름을 채운 검색 화면을 열어 손으로 다시 찾게 한다 — `OOO 다시 찾기`가
    * 생기기 전의 동작과 같다. 이 실패를 오류 화면(view.kind === "error")으로
    * 보내지 않는 이유: 그 화면의 "다시 시도"는 이미 정해진 좌표로 다시 부르는
    * 것인데, 여기서는 아직 좌표를 구하지 못한 채로 실패했다.
@@ -449,12 +449,12 @@ export default function Home() {
       {(view.kind === "start" || (view.kind === "loading" && view.from === "start")) && (
         <StartScreen
           lastSpotName={lastSpotName}
-          // `OOO로 다시 찾기`는 그 장소로 곧장 다시 찾겠다는 버튼이므로 검색
+          // `OOO 다시 찾기`는 그 장소로 곧장 다시 찾겠다는 버튼이므로 검색
           // 화면을 거치지 않고 resumeAnchor가 그 이름으로 곧장 결과를 구한다.
           onResume={() => resumeAnchor(lastSpotName)}
           onStartHere={() => start({ kind: "here" })}
           // `다른 곳에서 찾기`는 "다른" 곳을 찾겠다는 뜻이므로 비운다. 그 글자로
-          // 다시 찾고 싶으면 `~로 다시 찾기`가 따로 있다.
+          // 다시 찾고 싶으면 `~ 다시 찾기`가 따로 있다.
           onStartElsewhere={() =>
             setView({ kind: "search", initialKeyword: "", returnTo: { kind: "start" } })
           }
@@ -524,6 +524,7 @@ export default function Home() {
           onToggleAvoid={toggleAvoid}
           onDecide={decided}
           decidedIds={visits.map((visit) => visit.placeId)}
+          onShowVisits={() => setView({ kind: "visits" })}
           onReshuffle={reshufflePlaces}
           onRestart={() => setView({ kind: "start" })}
         />

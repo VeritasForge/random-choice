@@ -1,5 +1,7 @@
+import { RETENTION_DAYS } from "@/lib/visits";
+
 type Props = {
-  /** 마지막으로 고른 장소 이름. 빈 문자열이면 `OOO로 다시 찾기` 단추를 그리지 않는다. */
+  /** 마지막으로 고른 장소 이름. 빈 문자열이면 `OOO 다시 찾기` 단추를 그리지 않는다. */
   lastSpotName: string;
   onResume: () => void;
   onStartHere: () => void;
@@ -33,6 +35,16 @@ export default function StartScreen({
           주변에 있는 음식점을 보고 <strong className="font-semibold">무엇을 먹을지</strong>부터
           좁혀 드립니다. 후보를 직접 적지 않아도 됩니다.
         </p>
+        {/*
+          위치를 왜 쓰는지와 무엇이 남는지를 처음 온 사람에게 밝힌다(제품 원칙 3·4).
+          사실 근거: 서버에는 저장소가 없고, 이 기기에 남는 것은 마지막 검색어·정한 가게
+          (14일)·"최근에 정한 곳 빼기" 설정이다(lib/anchor.ts·lib/visits.ts의 저장 키).
+          보관 기간은 RETENTION_DAYS를 쓴다.
+        */}
+        <p className="max-w-xs text-base leading-relaxed text-balance break-keep text-muted">
+          위치는 주변 음식점을 찾을 때만 쓰고 저장하지 않아요. 이 기기에는 마지막 검색어와
+          정한 가게({RETENTION_DAYS}일)만 남아요.
+        </p>
       </div>
 
       <div className="flex w-full flex-col items-center gap-3">
@@ -48,7 +60,9 @@ export default function StartScreen({
             aria-disabled={loading}
             className="btn btn-primary w-full"
           >
-            {lastSpotName}로 다시 찾기
+            {/* 이름 뒤에 조사를 붙이지 않는다. `로/으로`는 받침에 따라 갈려
+                `경주역로`처럼 틀리기 쉽고, 이름 끝이 숫자·영문이면 판정할 수도 없다. */}
+            {lastSpotName} 다시 찾기
           </button>
         ) : null}
         {/*
