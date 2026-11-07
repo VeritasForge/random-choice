@@ -10,8 +10,9 @@ type Props = {
 export default function Notice({ title, description, actions }: Props) {
   return (
     // grow·my-auto로 버튼 묶음을 화면 아래쪽에 붙인다(까닭은 StartScreen에 적어 두었다).
-    <section className="rise flex w-full grow flex-col">
-      <div className="my-auto flex flex-col items-center gap-4 py-8 text-center">
+    <section className="rise flex w-full grow flex-col gap-6">
+      {/* 글자는 나뭇결 위에 직접 놓지 않고 종이색 판 위에 둔다(app/globals.css의 --wood 주석). */}
+      <div className="my-auto flex flex-col items-center gap-4 rounded-xl border border-line bg-background px-5 py-6 text-center">
         <h2 className="text-2xl font-bold tracking-tight text-balance break-keep">{title}</h2>
         <p className="max-w-sm text-base leading-relaxed text-muted">{description}</p>
       </div>
