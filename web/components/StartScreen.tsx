@@ -31,7 +31,7 @@ export default function StartScreen({
         <h1 className="text-4xl font-bold tracking-tight text-balance break-keep">
           오늘은 뭐 먹지?
         </h1>
-        <p className="max-w-xs text-base leading-relaxed text-muted">
+        <p className="max-w-xs text-base leading-relaxed text-balance break-keep text-muted">
           주변에 있는 음식점을 보고 <strong className="font-semibold">무엇을 먹을지</strong>부터
           좁혀 드립니다. 후보를 직접 적지 않아도 됩니다.
         </p>
