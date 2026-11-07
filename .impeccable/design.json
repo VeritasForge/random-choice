@@ -224,6 +224,14 @@
       "description": "위치 검색 입력칸. 이름표는 화면 낭독기용으로만 있다.",
       "html": "<div class=\"ds-search\"><input class=\"ds-input\" type=\"search\" placeholder=\"경주, 강남역, 제주시 애월읍…\"><button class=\"ds-search-btn\">찾기</button></div>",
       "css": ".ds-search{display:flex;gap:.5rem;font-family:inherit} .ds-input{min-width:0;flex:1;padding:.5rem .75rem;border-radius:.75rem;border:1px solid var(--line,#8f857a);background:transparent;color:var(--foreground,#1c1a17);font-family:inherit;font-size:1rem} .ds-input:focus-visible{outline:2px solid var(--foreground,#1c1a17);outline-offset:2px} .ds-search-btn{flex-shrink:0;min-height:48px;min-width:48px;padding:.75rem 1.25rem;border-radius:9999px;border:1px solid transparent;background:var(--accent,#b8552f);color:var(--accent-ink,#ffffff);font-family:inherit;font-size:1rem;font-weight:600;cursor:pointer} .ds-search-btn:focus-visible{outline:2px solid var(--foreground,#1c1a17);outline-offset:2px}"
+    },
+    {
+      "name": "Noren Title",
+      "kind": "other",
+      "refersTo": "noren-title",
+      "description": "시작 화면의 서비스 이름. 노렌(가게 입구의 천)에 단어마다 한 폭씩 얹는다. 이 화면 한 곳에만 쓴다.",
+      "html": "<div class=\"ds-noren\"><div class=\"ds-noren-rod\"></div><h1 class=\"ds-noren-title\"><span>오늘은</span> <span>뭐</span> <span>먹지?</span></h1></div>",
+      "css": ".ds-noren{display:flex;flex-direction:column;width:fit-content;max-width:100%} .ds-noren-rod{height:6px;margin:0 -8px;border-radius:9999px;background:var(--foreground,#1c1a17)} .ds-noren-title{display:flex;justify-content:center;gap:3px;margin:0;font-size:clamp(1.75rem,9vw,2.25rem);font-weight:700;line-height:1;letter-spacing:-.025em;white-space:nowrap;word-break:keep-all} .ds-noren-title span{display:flex;align-items:center;height:96px;padding:0 .75rem;border-radius:0 0 2px 2px;background:var(--accent,#b8552f);color:var(--accent-ink,#ffffff)}"
     }
   ],
   "narrative": {
@@ -232,14 +240,14 @@
     "keyCharacteristics": [
       "종이색 바탕, 강조색은 테라코타 하나, 그림자와 그라데이션 없음",
       "누를 수 있는 것은 최소 48px, 글자는 16px 이상(위치 안내와 검색 결과의 곁글만 14px)",
-      "알약형 버튼과 둥근 사각형 상자 두 가지 형태만 사용",
+      "알약형 버튼과 둥근 사각형 상자 두 가지 형태만 사용(시작 화면의 노렌 하나만 예외)",
       "웹폰트는 Noto Serif KR 하나만 사용(시작 화면 363KB, 결과 화면까지 493KB)",
       "밝은 화면과 어두운 화면이 같은 구조로 짝을 이룸"
     ],
     "rules": [
       {
         "name": "The One Voice Rule",
-        "body": "테라코타는 결과와 주요 버튼에만 씁니다. 한 화면에서 강조색이 칠해진 버튼은 하나를 넘지 않습니다.",
+        "body": "테라코타는 결과와 주요 버튼에만 씁니다. 한 화면에서 강조색이 칠해진 버튼은 하나를 넘지 않습니다. 시작 화면의 노렌(장식)만 예외입니다.",
         "section": "colors"
       },
       {

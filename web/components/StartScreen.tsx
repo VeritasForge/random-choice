@@ -28,9 +28,33 @@ export default function StartScreen({
     */
     <section className="rise flex w-full grow flex-col">
       <div className="my-auto flex flex-col items-center gap-5 py-8 text-center">
-        <h1 className="text-4xl font-bold tracking-tight text-balance break-keep">
-          오늘은 뭐 먹지?
-        </h1>
+        {/*
+          서비스 이름을 노렌(가게 입구에 거는 짧은 천)에 얹은 모양이다. 그림이나 이미지 파일 없이
+          CSS 도형만 쓴다. 천의 갈라진 틈이 띄어쓰기 자리에 놓이도록 단어마다 한 폭으로 나눠
+          글자가 틈에 잘리지 않는다.
+          - 막대는 장식이므로 aria-hidden이다. 제목은 <h1> 하나이고, 폭 사이의 {" "}가 낭독기와
+            textContent에서 "오늘은 뭐 먹지?"가 되도록 띄어쓰기를 지킨다.
+          - 색은 강조색 하나만 쓴다(디자인 문서의 "강조색은 하나" 규칙). 글자 대비는
+            accent-ink가 맡아 밝은 화면 4.80:1, 어두운 화면 5.84:1이다.
+          - 글자 크기를 화면 폭에 비례(9vw)하게 줄여, 320px 폭에서도 세 폭이 한 줄에 들어간다.
+            390px에서는 상한(2.25rem)에 가까워 기존 제목과 크기가 같다.
+          - 흔들리는 움직임은 넣지 않는다. 열 때마다 반복되면 거슬리고, 이 화면의 움직임은
+            .rise 하나로 한정되어 있다.
+        */}
+        <div className="flex w-fit max-w-full flex-col items-stretch gap-0">
+          <div aria-hidden="true" className="-mx-2 h-1.5 rounded-full bg-foreground" />
+          <h1 className="flex justify-center gap-[3px] text-[clamp(1.75rem,9vw,2.25rem)] leading-none font-bold tracking-tight break-keep whitespace-nowrap">
+            <span className="flex h-24 items-center rounded-b-sm bg-accent px-3 text-accent-ink">
+              오늘은
+            </span>{" "}
+            <span className="flex h-24 items-center rounded-b-sm bg-accent px-3 text-accent-ink">
+              뭐
+            </span>{" "}
+            <span className="flex h-24 items-center rounded-b-sm bg-accent px-3 text-accent-ink">
+              먹지?
+            </span>
+          </h1>
+        </div>
         <p className="max-w-xs text-base leading-relaxed text-balance break-keep text-muted">
           주변에 있는 음식점을 보고 <strong className="font-semibold">무엇을 먹을지</strong>부터
           좁혀 드립니다. 후보를 직접 적지 않아도 됩니다.
