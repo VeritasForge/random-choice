@@ -265,7 +265,7 @@ export default function ResultScreen({
 
           이 상자(bg-surface + border-line)의 테두리는 안쪽으로 --surface와, 바깥쪽으로
           나뭇결 바탕과 맞닿는다. 안쪽은 밝은 화면 6.79:1·어두운 화면 4.20:1, 바깥은
-          나뭇결의 가장 어두운 자리 기준 3.58:1·3.54:1로 WCAG 1.4.11의 3:1을 모두 넘는다.
+          나뭇결의 가장 어두운 자리(옹이 제외) 기준 3.15:1·3.85:1로 WCAG 1.4.11의 3:1을 모두 넘는다.
           --surface, --line, 나뭇결 색 중 하나를 바꾸면 세 면을 다시 잰다
           (app/globals.css의 --line 주석 참고).
         */}
