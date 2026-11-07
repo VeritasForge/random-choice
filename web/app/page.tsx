@@ -374,7 +374,9 @@ export default function Home() {
    * 대신 기록이 늘어난 덕에 그 줄이 "정하신 곳"으로 바뀌어 기록된 사실을 알린다.
    */
   function decided(place: Place) {
-    recordVisit(store, place.id, place.name);
+    // placeUrl은 카카오가 사용자가 직접 담은 장소의 저장을 허용한 항목이다(lib/visits.ts의 머리말).
+    // 기본값과 같은 new Date()를 명시해 넘기는 것은 placeUrl이 그 뒤 인자이기 때문이다.
+    recordVisit(store, place.id, place.name, new Date(), place.placeUrl);
     setVisits(readVisits(store));
   }
 
