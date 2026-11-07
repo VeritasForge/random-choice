@@ -1,5 +1,15 @@
 import { RETENTION_DAYS } from "@/lib/visits";
 
+/*
+  노렌 한 폭. relative는 before(막대에 거는 고리)와 after(박음질)를 이 폭 안에 붙이기 위한 것이다.
+  고리는 폭의 위쪽 가운데에서 막대(높이 6px) 위로 10px 솟아 막대를 감싼 모양을 낸다.
+  박음질은 위쪽을 뺀 세 변을 6px 안쪽으로 두른 점선이다.
+*/
+const NOREN_PANEL =
+  "relative flex h-24 items-center rounded-b-[3px] bg-noren px-3 text-noren-ink " +
+  "before:absolute before:-top-2.5 before:left-1/2 before:z-10 before:h-2.5 before:w-4 before:-translate-x-1/2 before:rounded-t-[3px] before:bg-noren " +
+  "after:pointer-events-none after:absolute after:inset-x-1.5 after:top-0 after:bottom-1.5 after:rounded-b-[2px] after:border after:border-t-0 after:border-dashed after:border-noren-ink/45";
+
 type Props = {
   /** 마지막으로 고른 장소 이름. 빈 문자열이면 `OOO 다시 찾기` 단추를 그리지 않는다. */
   lastSpotName: string;
@@ -34,8 +44,9 @@ export default function StartScreen({
           글자가 틈에 잘리지 않는다.
           - 막대는 장식이므로 aria-hidden이다. 제목은 <h1> 하나이고, 폭 사이의 {" "}가 낭독기와
             textContent에서 "오늘은 뭐 먹지?"가 되도록 띄어쓰기를 지킨다.
-          - 색은 강조색 하나만 쓴다(디자인 문서의 "강조색은 하나" 규칙). 글자 대비는
-            accent-ink가 맡아 밝은 화면 4.80:1, 어두운 화면 5.84:1이다.
+          - 노렌다움은 세 가지로 낸다: 쪽빛 남색 천에 크림색 글자(NOREN_PANEL의 bg-noren과
+            text-noren-ink), 막대에 천을 걸어 맨 고리(before), 천 가장자리를 두른 박음질(after,
+            위쪽은 막대에 달려 있어 없다). 색은 DESIGN.md의 Noren Title에 명암비와 함께 적었다.
           - 글자 크기를 화면 폭에 비례(9vw)하게 줄여, 320px 폭에서도 세 폭이 한 줄에 들어간다.
             390px에서는 상한(2.25rem)에 가까워 기존 제목과 크기가 같다.
           - 흔들리는 움직임은 넣지 않는다. 열 때마다 반복되면 거슬리고, 이 화면의 움직임은
@@ -43,16 +54,9 @@ export default function StartScreen({
         */}
         <div className="flex w-fit max-w-full flex-col items-stretch gap-0">
           <div aria-hidden="true" className="-mx-2 h-1.5 rounded-full bg-foreground" />
-          <h1 className="flex justify-center gap-[3px] text-[clamp(1.75rem,9vw,2.25rem)] leading-none font-bold tracking-tight break-keep whitespace-nowrap">
-            <span className="flex h-24 items-center rounded-b-sm bg-accent px-3 text-accent-ink">
-              오늘은
-            </span>{" "}
-            <span className="flex h-24 items-center rounded-b-sm bg-accent px-3 text-accent-ink">
-              뭐
-            </span>{" "}
-            <span className="flex h-24 items-center rounded-b-sm bg-accent px-3 text-accent-ink">
-              먹지?
-            </span>
+          <h1 className="flex justify-center gap-[5px] text-[clamp(1.75rem,9vw,2.25rem)] leading-none font-bold tracking-tight break-keep whitespace-nowrap">
+            <span className={NOREN_PANEL}>오늘은</span> <span className={NOREN_PANEL}>뭐</span>{" "}
+            <span className={NOREN_PANEL}>먹지?</span>
           </h1>
         </div>
         <div className="flex max-w-xs flex-col gap-3 rounded-xl border border-line bg-background px-4 py-3">
