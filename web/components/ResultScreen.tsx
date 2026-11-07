@@ -263,17 +263,11 @@ export default function ResultScreen({
           둘 다 아니면(회피가 켜져 있고 뺀 것도 없으면) 줄 자체를 그리지 않는다.
           기록이 빈 사람에게는 이 화면이 예전 그대로여야 한다.
 
-          바탕색(bg-surface)만으로는 이 상자가 화면 바탕과 밝은 화면 1.11:1,
-          어두운 화면 1.12:1로만 구분된다. 경계선 색을 #e5e1db에서 올린 근거가
-          "햇빛 아래에서 안 보인다"였는데, 같은 잣대를 대면 테두리 없는 이 상자야말로
-          밖에서 경계가 사라진다. 그래서 border-line을 준다 —
-          밝은 화면 3.44:1, 어두운 화면 3.48:1이라 WCAG 1.4.11의 3:1을 넘는다.
-
-          **그 두 수는 테두리의 바깥 면(화면 바탕과 맞닿는 쪽)이다.** 이 테두리는
-          안쪽으로 --surface와도 맞닿는데, 그쪽은 밝은 화면 3.0986:1 · 어두운 화면
-          3.1022:1로 여유가 0.10뿐이다. 지금은 3:1을 넘으므로 통과이고 색을 바꿀
-          값어치는 없지만, --surface나 --line을 조금이라도 조정하면 여기가 가장
-          먼저 깨진다(같은 사실을 app/globals.css의 --line 옆에도 적어 두었다).
+          이 상자(bg-surface + border-line)의 테두리는 안쪽으로 --surface와, 바깥쪽으로
+          나뭇결 바탕과 맞닿는다. 안쪽은 밝은 화면 6.79:1·어두운 화면 4.20:1, 바깥은
+          나뭇결의 가장 어두운 자리 기준 3.58:1·3.54:1로 WCAG 1.4.11의 3:1을 모두 넘는다.
+          --surface, --line, 나뭇결 색 중 하나를 바꾸면 세 면을 다시 잰다
+          (app/globals.css의 --line 주석 참고).
         */}
         {banner !== null ? (
           <div className="flex w-full flex-col items-center gap-2 rounded-xl border border-line bg-surface p-3 text-center">
@@ -290,7 +284,12 @@ export default function ResultScreen({
           </div>
         ) : null}
 
-        <div className="flex flex-col items-center gap-1 text-center">
+        {/*
+          종이색 판 위에 올린다. 나뭇결 바탕 위에서는 강조색 큰 제목이 나무 대비 2.2~3.0:1로
+          큰 글자 하한 3:1을 밑돌고(밝은 화면), 곁글은 결과 뒤에서 어른거린다.
+          종이 위에서는 강조색 제목이 4.56:1이다.
+        */}
+        <div className="flex w-full flex-col items-center gap-1 rounded-xl border border-line bg-background px-4 py-3 text-center">
           <p className="text-base text-muted">오늘은</p>
           {/*
             결과는 단정적으로, 크게 한 덩어리로 보여 준다 — "묻지 않고 내놓는다"가
