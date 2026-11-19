@@ -1,6 +1,6 @@
 // 서버를 켜는 진입점이다.
 // 카카오 열쇠는 환경변수 KAKAO_REST_API_KEY로, 화면 서버와 나눠 갖는 비밀값은
-// INTERNAL_API_KEY로만 읽는다.
+// INTERNAL_API_KEY로, 방문을 세는 데이터베이스의 연결 주소는 DATABASE_URL로만 읽는다.
 package main
 
 import (
@@ -16,6 +16,7 @@ import (
 
 	"github.com/VeritasForge/random-choice/api/internal/httpapi"
 	"github.com/VeritasForge/random-choice/api/internal/kakao"
+	"github.com/VeritasForge/random-choice/api/internal/stats"
 )
 
 // 세 시간값은 서로 맞물려 있다. 카카오 조회 상한(kakao.DefaultSearchTimeout)이
@@ -57,8 +58,23 @@ func main() {
 		slog.Warn("INTERNAL_API_KEY가 없습니다. 조회 요청을 누구나 부를 수 있습니다")
 	}
 
+	// 연결 주소가 없거나 문법이 틀리면 저장소 없이 뜬다. 그러면 방문·통계 경로만
+	// not_configured로 답하고 조회 경로는 그대로 돈다(카카오 열쇠가 없을 때와 같은 방식).
+	var handlerOpts []httpapi.Option
+	if databaseURL := os.Getenv("DATABASE_URL"); databaseURL != "" {
+		store, err := stats.NewPostgresStore(databaseURL)
+		if err != nil {
+			// err에 연결 주소(비밀번호 포함)가 실릴 수 있어 남기지 않는다.
+			slog.Warn("DATABASE_URL을 해석하지 못했습니다. 방문·통계 경로는 not_configured로 응답합니다")
+		} else {
+			handlerOpts = append(handlerOpts, httpapi.WithVisitStore(store))
+		}
+	} else {
+		slog.Warn("DATABASE_URL이 없습니다. 방문·통계 경로는 not_configured로 응답합니다")
+	}
+
 	server := &http.Server{
-		Handler:           httpapi.NewHandler(finder, spots, internalKey),
+		Handler:           httpapi.NewHandler(finder, spots, internalKey, handlerOpts...),
 		ReadHeaderTimeout: 5 * time.Second,
 		// 응답을 천천히 읽는(또는 읽지 않는) 상대가 연결과 고루틴을 무기한 붙잡지 못하게 한다.
 		WriteTimeout: writeTimeout,

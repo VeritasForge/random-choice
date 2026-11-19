@@ -100,7 +100,14 @@ type errorResponse struct {
 // internalKey는 화면 서버와 나눠 갖는 비밀값이다. 조회 경로만 이 값으로 막는다.
 // 빈 문자열이면 검사하지 않는다 — 그 경우 누구나 부를 수 있다는 사실은 서버를 켜는
 // 자리(cmd/server/main.go)가 경고로 알린다.
-func NewHandler(finder PlaceFinder, spots SpotFinder, internalKey string) http.Handler {
+//
+// opts로 방문 저장소(WithVisitStore)를 붙인다. 붙이지 않아도 기존 경로는 그대로 돈다.
+func NewHandler(finder PlaceFinder, spots SpotFinder, internalKey string, opts ...Option) http.Handler {
+	var cfg options
+	for _, opt := range opts {
+		opt(&cfg)
+	}
+
 	// 비밀값의 해시는 언제나 같은 값이라 여기서 한 번만 만든다. 요청마다 다시 만들면
 	// 그 계산 시간이 비밀값 길이에 따라(SHA-256은 64바이트 덩어리 단위로 돈다) 달라져,
 	// 해시로 없애려던 길이 누출이 아주 작게 되돌아온다.
@@ -129,6 +136,22 @@ func NewHandler(finder PlaceFinder, spots SpotFinder, internalKey string) http.H
 			return
 		}
 		handlePlaces(w, r, spots)
+	})
+	mux.HandleFunc("POST /api/v1/visits", func(w http.ResponseWriter, r *http.Request) {
+		if !authorized(r, wantKey) {
+			writeError(w, http.StatusUnauthorized, "unauthorized",
+				"허가되지 않은 요청입니다.")
+			return
+		}
+		handleVisit(w, r, cfg.visits)
+	})
+	mux.HandleFunc("GET /api/v1/stats", func(w http.ResponseWriter, r *http.Request) {
+		if !authorized(r, wantKey) {
+			writeError(w, http.StatusUnauthorized, "unauthorized",
+				"허가되지 않은 요청입니다.")
+			return
+		}
+		handleStats(w, r, cfg.visits)
 	})
 	// 상태 확인 두 경로는 막지 않는다. Vercel과 감시 도구가 비밀값 없이 닿아야 하고,
 	// 둘 다 카카오를 부르지 않아 호출 한도를 쓰지 않는다.
