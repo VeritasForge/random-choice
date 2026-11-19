@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import type { Place } from "@/lib/api";
 import { distanceLabel } from "@/lib/reasons";
-import { RETENTION_DAYS } from "@/lib/visits";
+import { isPlainClick } from "@/lib/sheet";
+import { kakaoPlaceUrl, RETENTION_DAYS } from "@/lib/visits";
+import PlaceSheet, { type SheetPlace } from "./PlaceSheet";
 
 type Props = {
   cuisine: string;
@@ -85,8 +87,14 @@ const ROW_CLASS =
  * 그 한 조합 때문에 화면 전체를 14px로 내리지는 않았다. 설계가 정한 글자 하한이 16px이고
  * (서서 보는 화면이다), 바깥 상자가 쓰는 min-h-dvh는 주소 표시줄을 뺀 높이라 실제
  * 기기에서 쓸 수 있는 높이는 844px보다 낮다 — 14px로 내려도 808px이 들어간다는 보장이 없다.
+ *
+ * **보통 누름은 새 탭이 아니라 가게 창(PlaceSheet)을 연다.** 새 탭으로 가면 평점을 보고
+ * 돌아오는 왕복이 가게마다 반복되기 때문이다. 그래도 상호를 버튼이 아니라 링크로 남기는
+ * 것은 새 탭 열기(가운데 버튼, Cmd·Ctrl 누름, 길게 누르기)를 살려 두기 위해서다 —
+ * 그런 누름은 가로채지 않는다(lib/sheet.ts의 isPlainClick). 카카오 가게 페이지 주소가
+ * 아니면(kakaoPlaceUrl이 null) 창에 넣지 않고 예전처럼 링크로만 둔다.
  */
-function PlaceRow({ place }: { place: Place }) {
+function PlaceRow({ place, onOpen }: { place: Place; onOpen: (place: SheetPlace) => void }) {
   // 주소가 비어 올 수 있다. 그대로 이으면 "240m · 도보 4분 · "처럼 꼬리가 남는다.
   const meta = [distanceLabel(place.distance), place.roadAddress].filter(Boolean).join(" · ");
   const hasLink = Boolean(place.placeUrl);
@@ -105,6 +113,15 @@ function PlaceRow({ place }: { place: Place }) {
           href={place.placeUrl}
           target="_blank"
           rel="noreferrer noopener"
+          onClick={(event) => {
+            // 조회 응답의 주소는 http라 그대로 iframe에 넣으면 https 화면에서 막힌다.
+            // kakaoPlaceUrl이 https로 올리고 카카오 가게 페이지가 아닌 주소를 거른다.
+            const url = kakaoPlaceUrl(place.placeUrl);
+            if (url !== null && isPlainClick(event)) {
+              event.preventDefault();
+              onOpen({ name: place.name, url });
+            }
+          }}
           className="row-link line-clamp-2 text-lg font-semibold underline decoration-line underline-offset-4 hover:decoration-current"
         >
           {place.name}
@@ -205,6 +222,8 @@ export default function ResultScreen({
   // 포커스를 옮기면 낭독기가 새 초점인 "정하신 곳"을 읽어 주어 둘이 한 번에 닫힌다.
   const [justDecidedId, setJustDecidedId] = useState<string | null>(null);
   const markRef = useRef<HTMLSpanElement>(null);
+  // 가게 창에 띄운 가게. null이면 창이 닫혀 있다.
+  const [sheet, setSheet] = useState<SheetPlace | null>(null);
 
   useEffect(() => {
     if (justDecidedId === null) {
@@ -312,7 +331,7 @@ export default function ResultScreen({
           */}
           {places.map((place, index) => (
             <li key={place.id || `unknown-${index}`} className={ROW_CLASS}>
-              <PlaceRow place={place} />
+              <PlaceRow place={place} onOpen={setSheet} />
               <DecideControl
                 place={place}
                 decided={decidedIds.includes(place.id)}
@@ -371,6 +390,8 @@ export default function ResultScreen({
           처음부터 다시
         </button>
       </div>
+
+      <PlaceSheet place={sheet} onClose={() => setSheet(null)} />
     </section>
   );
 }
