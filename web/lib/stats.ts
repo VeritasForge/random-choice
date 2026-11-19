@@ -32,6 +32,18 @@ export function bucketLabel(start: string, unit: Unit): string {
   return `${md} (${weekday})`;
 }
 
+/**
+ * 가로축 양끝에 쓸 날짜 글자. 칸이 하나뿐이면 같은 글자를 양끝에 두 번 쓰지 않도록 하나만 돌려주고,
+ * 비었으면 빈 목록이다. 둘일 때 순서는 [가장 오래된 칸, 가장 최근 칸].
+ */
+export function axisEndLabels(buckets: Bucket[], unit: Unit): string[] {
+  if (buckets.length === 0) {
+    return [];
+  }
+  const first = bucketLabel(buckets[0].start, unit);
+  return buckets.length === 1 ? [first] : [first, bucketLabel(buckets[buckets.length - 1].start, unit)];
+}
+
 /** 가장 큰 값 이상인 가장 작은 눈금 끝(1, 2, 5, 10, 20, 50, 100, …). 비었거나 전부 0이면 1. */
 export function axisMax(values: number[]): number {
   const max = Math.max(0, ...values);

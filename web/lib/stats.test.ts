@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { axisMax, bucketLabel, fetchStats, parseUnit } from "./stats";
+import { axisEndLabels, axisMax, bucketLabel, fetchStats, parseUnit } from "./stats";
 import { INTERNAL_KEY_HEADER } from "./proxy";
 
 describe("parseUnit", () => {
@@ -36,6 +36,19 @@ describe("axisMax", () => {
     expect(axisMax([11])).toBe(20);
     expect(axisMax([137])).toBe(200);
     expect(axisMax([1, 2])).toBe(2);
+  });
+});
+
+describe("axisEndLabels", () => {
+  const b = (start: string) => ({ start, visitors: 1, visits: 1 });
+  it("칸이 없으면 빈 목록", () => {
+    expect(axisEndLabels([], "day")).toEqual([]);
+  });
+  it("칸이 하나면 한 번만", () => {
+    expect(axisEndLabels([b("2026-11-19")], "day")).toEqual(["11/19 (목)"]);
+  });
+  it("여럿이면 처음과 끝", () => {
+    expect(axisEndLabels([b("2026-09-01"), b("2026-10-01"), b("2026-11-01")], "month")).toEqual(["2026-09", "2026-11"]);
   });
 });
 
