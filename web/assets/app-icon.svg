@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 104 104">
+  <!-- 홈 화면 아이콘의 원본. 고친 뒤에는 `node scripts/make-icons.mjs`를 다시 돌린다. -->
+  <!-- 바탕은 투명하면 안 된다. 아이폰은 투명한 자리를 검게 칠한다. -->
+  <rect width="104" height="104" fill="#faf9f7"/>
+  <path d="M24 54a28 26 0 0 1 56 0z" fill="#ffffff" stroke="#1c1a17" stroke-width="3" stroke-linejoin="round"/>
+  <path d="M18 54h68q0 28-24 32v4H42v-4Q18 82 18 54z" fill="#b8552f" stroke="#1c1a17" stroke-width="3" stroke-linejoin="round"/>
+  <circle cx="42" cy="68" r="3" fill="#1c1a17"/><circle cx="62" cy="68" r="3" fill="#1c1a17"/>
+  <path d="M47 74q5 5 10 0" stroke="#1c1a17" stroke-width="3" fill="none" stroke-linecap="round"/>
+  <circle cx="35" cy="74" r="4" fill="#f4b9a0"/><circle cx="69" cy="74" r="4" fill="#f4b9a0"/>
+</svg>
