@@ -60,6 +60,25 @@ export default function StartScreen({
     }
   }, [showGuide]);
 
+  // 링크가 사라질 때도 같은 문제가 생긴다. 설치 신호를 받은 브라우저에서 링크를 누르면
+  // 신호를 쓴 순간 링크가 사라지므로(다시 쓸 수 없는 신호라 눌러도 반응 없는 링크가 된다),
+  // 초점을 옆의 `최근 기록 보기`로 옮긴다. 상자가 펼쳐져 사라진 경우는 상자의 제목이
+  // 초점을 받으므로 여기서 건드리지 않고, 초점이 body에 있을 때만 옮겨 사용자가 보고 있던
+  // 자리에서 초점을 빼앗지 않는다.
+  const visitsLinkRef = useRef<HTMLButtonElement>(null);
+  const hadInstallLink = useRef(false);
+  useEffect(() => {
+    if (
+      hadInstallLink.current &&
+      !showInstallLink &&
+      !showGuide &&
+      document.activeElement === document.body
+    ) {
+      visitsLinkRef.current?.focus();
+    }
+    hadInstallLink.current = showInstallLink;
+  }, [showInstallLink, showGuide]);
+
   function openInstall() {
     if (installKind === "prompt") {
       onInstall();
@@ -189,6 +208,7 @@ export default function StartScreen({
         */}
         <div className="flex flex-wrap justify-center gap-2">
           <button
+            ref={visitsLinkRef}
             type="button"
             onClick={loading ? undefined : onShowVisits}
             aria-disabled={loading}

@@ -257,6 +257,23 @@ export default function ResultScreen({
   // 렌더 중에 계산하고 상태로 두지 않는다.
   const closed = justDecidedId !== null && decidedIds.includes(justDecidedId);
 
+  // 홈 화면 추가 안내 상자를 그릴지. 조건의 까닭은 아래 상자 자리의 주석에 적었다.
+  const offersInstall = closed && isOfferKind(installKind) && !installDismissed;
+  const visitsButtonRef = useRef<HTMLButtonElement>(null);
+  const offeredInstall = useRef(false);
+
+  // 안내 상자가 사라지면 초점을 바로 위 "기록 보기"로 옮긴다. 상자는 그 안의 `✕`나
+  // `홈 화면에 추가하기`를 누른 순간 통째로 사라지는데, 옮기지 않으면 초점이 body로 떨어져
+  // 키보드 사용자의 다음 Tab이 문서 맨 처음부터 다시 시작한다(위 markRef와 같은 문제다).
+  // 초점이 body에 있을 때만 옮긴다 — 상자가 사용자 조작 없이 사라진 경우(예: 다른 창에서
+  // 설치를 마침)에 사용자가 보고 있던 자리에서 초점을 빼앗지 않기 위해서다.
+  useEffect(() => {
+    if (offeredInstall.current && !offersInstall && document.activeElement === document.body) {
+      visitsButtonRef.current?.focus();
+    }
+    offeredInstall.current = offersInstall;
+  }, [offersInstall]);
+
   // 맨 위에 그릴 안내. 둘은 겹치지 않는다 — 회피가 꺼져 있으면 뺀 것이 없어
   // notice가 반드시 null이기 때문이다(web/lib/avoid.ts).
   let banner: { text: string; actionLabel: string | null } | null = null;
@@ -368,7 +385,12 @@ export default function ResultScreen({
             <p className="text-base leading-relaxed text-muted">
               정하신 곳은 {RETENTION_DAYS}일 동안 기록에 남아요
             </p>
-            <button type="button" onClick={onShowVisits} className="btn btn-quiet btn-sm">
+            <button
+              ref={visitsButtonRef}
+              type="button"
+              onClick={onShowVisits}
+              className="btn btn-quiet btn-sm"
+            >
               기록 보기
             </button>
           </div>
@@ -383,7 +405,7 @@ export default function ResultScreen({
           안내할 수 없는 상황(이미 홈 화면에서 열림, 설치 신호가 오지 않은 브라우저)에서는
           그리지 않는다 — 눌러도 아무 일도 일어나지 않는 버튼을 보여 주지 않으려는 것이다.
         */}
-        {closed && isOfferKind(installKind) && !installDismissed ? (
+        {offersInstall ? (
           <InstallGuide
             kind={installKind}
             variant="offer"
