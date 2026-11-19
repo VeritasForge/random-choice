@@ -14,6 +14,8 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
+// 문장이 둘(CREATE TABLE, CREATE INDEX)인데 Exec 한 번에 보낸다. 단순 프로토콜이라 가능하다.
+// NewPostgresStore의 QueryExecMode를 바꾸면 여러 문장 Exec가 실패하므로, 그때는 두 번의 호출로 나눠야 한다.
 const createTableSQL = `
 CREATE TABLE IF NOT EXISTS visits (
   id         bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
@@ -64,6 +66,7 @@ func NewPostgresStore(databaseURL string) (*PostgresStore, error) {
 	// 연결 주소는 PgBouncer(연결 중계기)를 거치는 풀링 주소다.
 	// PgBouncer는 연결마다 준비된 문장(prepared statement)을 기억하지 못하므로,
 	// 문장을 준비하지 않고 보내는 단순 프로토콜을 쓴다.
+	// 이 모드를 바꾸면 createTableSQL의 여러 문장 Exec도 나눠야 한다.
 	cfg.ConnConfig.DefaultQueryExecMode = pgx.QueryExecModeSimpleProtocol
 	pool, err := pgxpool.NewWithConfig(context.Background(), cfg) // 연결은 하지 않는다
 	if err != nil {
