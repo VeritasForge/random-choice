@@ -200,3 +200,25 @@ describe("경로를 받아 넘기기", () => {
     expect(res.headers.get("Cache-Control")).toBe("no-store");
   });
 });
+
+describe("proxyToApi의 send 인자", () => {
+  it("send를 주면 POST로 같은 본문과 Content-Type, 비밀 헤더를 보낸다", async () => {
+    const { fetcher, calls } = fakeFetcher(new Response("{}", { status: 200 }));
+    const body = `{"visitorId":"00000000-0000-4000-8000-000000000001"}`;
+    await proxyToApi("/api/v1/visits", "", ORIGIN, "k3y-abc123", fetcher, { method: "POST", body });
+
+    expect(calls[0].url).toBe(`${ORIGIN}/api/v1/visits`);
+    expect(calls[0].init?.method).toBe("POST");
+    expect(calls[0].init?.body).toBe(body);
+    const headers = sentHeaders(calls[0].init);
+    expect(headers.get("Content-Type")).toBe("application/json");
+    expect(headers.get(INTERNAL_KEY_HEADER)).toBe("k3y-abc123");
+  });
+
+  it("send가 없으면 method와 body를 싣지 않는다", async () => {
+    const { fetcher, calls } = fakeFetcher(new Response("{}", { status: 200 }));
+    await proxyToApi("/api/v1/nearby", SEARCH, ORIGIN, "k", fetcher);
+    expect(calls[0].init?.method).toBeUndefined();
+    expect(calls[0].init?.body).toBeUndefined();
+  });
+});

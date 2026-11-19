@@ -49,6 +49,8 @@ export const INTERNAL_KEY_HEADER = "X-Internal-Key";
  *   **ASCII여야 한다** — HTTP 헤더 값은 latin-1만 담을 수 있어서, 한글처럼 그 범위를 넘는
  *   글자가 섞이면 fetch가 요청을 보내기도 전에 TypeError를 던진다(모든 조회가 실패한다).
  * @param fetcher 실제 호출자.
+ * @param send 본문을 실어 보낼 때만 준다(방문 기록 같은 POST). 주지 않으면 지금까지처럼 GET이다.
+ *   본문은 손대지 않고 넘기며, 값 검사는 Go 서버가 한다(질의 문자열과 같은 이유).
  */
 export async function proxyToApi(
   path: string,
@@ -56,8 +58,12 @@ export async function proxyToApi(
   apiOrigin: string,
   internalKey: string,
   fetcher: Fetcher,
+  send?: { method: "POST"; body: string },
 ): Promise<Response> {
   const headers: Record<string, string> = {};
+  if (send !== undefined) {
+    headers["Content-Type"] = "application/json";
+  }
   // 빈 값을 보내지 않는다. Go 서버는 빈 헤더도 틀린 값으로 보고 막으므로,
   // 붙이나 마나가 아니라 "붙이면 반드시 실패"다.
   if (internalKey !== "") {
@@ -67,7 +73,7 @@ export async function proxyToApi(
   let upstream: Response;
   let body: string;
   try {
-    upstream = await fetcher(`${apiOrigin}${path}${search}`, { headers });
+    upstream = await fetcher(`${apiOrigin}${path}${search}`, { headers, ...send });
     // 상태 코드와 본문을 손대지 않고 넘긴다. 오류일 때도 마찬가지다 — 화면의
     // errors.ts가 서버가 준 코드로 안내 문구를 고르기 때문에, 여기서 삼키면
     // 사용자는 무엇이 잘못됐는지 알 방법이 없어진다.

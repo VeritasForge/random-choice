@@ -6,6 +6,7 @@ import Notice from "@/components/Notice";
 import ResultScreen from "@/components/ResultScreen";
 import SearchScreen from "@/components/SearchScreen";
 import StartScreen from "@/components/StartScreen";
+import VisitBeacon from "@/components/VisitBeacon";
 import VisitsScreen from "@/components/VisitsScreen";
 import { type Anchor, anchorLabel, readLastSpotName, writeLastSpotName } from "@/lib/anchor";
 import {
@@ -540,6 +541,8 @@ export default function Home() {
       */
       className="mx-auto flex min-h-dvh w-full max-w-md flex-col items-center justify-center gap-8 p-6 pb-[max(1.5rem,env(safe-area-inset-bottom))] focus:outline-none"
     >
+      <VisitBeacon />
+
       {/* loading은 그 조회를 시작한 화면에서만 그린다(from). start에서 시작한
           조회가 아니면 여기서는 아무것도 그리지 않는다 — 검색 화면 쪽 조건이 맡는다. */}
       {(view.kind === "start" || (view.kind === "loading" && view.from === "start")) && (
