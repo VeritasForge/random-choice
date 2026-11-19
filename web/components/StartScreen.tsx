@@ -146,13 +146,14 @@ export default function StartScreen({
         </p>
         {/*
           위치를 왜 쓰는지와 무엇이 남는지를 처음 온 사람에게 밝힌다(제품 원칙 3·4).
-          사실 근거: 서버에는 저장소가 없고, 이 기기에 남는 것은 마지막 검색어·정한 가게
-          (14일)·"최근에 정한 곳 빼기" 설정이다(lib/anchor.ts·lib/visits.ts의 저장 키).
-          보관 기간은 RETENTION_DAYS를 쓴다.
+          사실 근거: 서버는 카카오 조회 결과를 저장하지 않고, 접속 통계용 익명 ID와 시각만
+          저장한다. 이 기기에 남는 것은 마지막 검색어·정한 가게(14일)·"최근에 정한 곳 빼기"
+          설정이다(lib/anchor.ts·lib/visits.ts의 저장 키). 보관 기간은 RETENTION_DAYS를 쓴다.
+          익명 ID는 화면에서 따로 안내하지 않기로 운영자가 정했다(설계 문서 7절 3번).
         */}
         <p className="text-base leading-relaxed text-balance break-keep text-muted">
           위치는 주변 음식점을 찾을 때만 쓰고 저장하지 않아요. 이 기기에는 마지막 검색어와
-          정한 가게({RETENTION_DAYS}일)만 남아요.
+          정한 가게({RETENTION_DAYS}일)가 남아요.
         </p>
         </div>
         )}
