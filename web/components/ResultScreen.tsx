@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 import type { Place } from "@/lib/api";
+import { isOfferKind, type InstallKind } from "@/lib/install";
 import { distanceLabel } from "@/lib/reasons";
 import { isPlainClick } from "@/lib/sheet";
 import { kakaoPlaceUrl, RETENTION_DAYS } from "@/lib/visits";
+import InstallGuide from "./InstallGuide";
 import PlaceSheet, { type SheetPlace } from "./PlaceSheet";
 
 type Props = {
@@ -44,6 +46,13 @@ type Props = {
   onChangeWhere: () => void;
   /** 후보 고르기 화면으로 돌아간다. 옮긴 위치 그대로 `다시 뽑기`가 이어진다. */
   onBackToCandidates: () => void;
+  /** 홈 화면 추가 안내를 어떻게 보여 줄 상황인지(web/lib/install.ts). */
+  installKind: InstallKind;
+  /** 홈 화면 추가 안내 상자를 닫은 적이 있는지. 있으면 다시 권하지 않는다. */
+  installDismissed: boolean;
+  /** 브라우저의 설치 확인 창을 띄운다. 설치 신호를 받은 브라우저에서만 불린다. */
+  onInstall: () => void;
+  onDismissInstall: () => void;
 };
 
 /**
@@ -213,6 +222,10 @@ export default function ResultScreen({
   whereLabel,
   onChangeWhere,
   onBackToCandidates,
+  installKind,
+  installDismissed,
+  onInstall,
+  onDismissInstall,
 }: Props) {
   // 방금 "여기로 정했어요"를 누른 가게. 그 자리의 버튼이 "정하신 곳" 글자로 바뀌면서
   // 사라지므로, 포커스를 새 글자로 옮겨 주지 않으면 포커스가 body로 떨어진다.
@@ -359,6 +372,24 @@ export default function ResultScreen({
               기록 보기
             </button>
           </div>
+        ) : null}
+
+        {/*
+          홈 화면에 추가하라고 권하는 자리. 한 곳을 정한 직후에 권하는 까닭: 서비스를 방금
+          끝까지 써 본 순간이라 "내일도 쓰겠다"는 마음이 가장 클 때다. 처음 들어오자마자
+          권하면 써 보기도 전에 설치부터 요구하는 것이 된다.
+          closed를 조건에 넣는 것은 기록이 실제로 남았을 때만 권하기 위해서다. 저장소가 막힌
+          브라우저에서는 "닫았다"는 표시도 남길 수 없어, 닫아도 다음에 또 나타나게 된다.
+          안내할 수 없는 상황(이미 홈 화면에서 열림, 설치 신호가 오지 않은 브라우저)에서는
+          그리지 않는다 — 눌러도 아무 일도 일어나지 않는 버튼을 보여 주지 않으려는 것이다.
+        */}
+        {closed && isOfferKind(installKind) && !installDismissed ? (
+          <InstallGuide
+            kind={installKind}
+            variant="offer"
+            onInstall={onInstall}
+            onClose={onDismissInstall}
+          />
         ) : null}
 
         {/*

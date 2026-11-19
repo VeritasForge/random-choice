@@ -19,6 +19,15 @@ import {
 import { avoidVisited } from "@/lib/avoid";
 import { distinctById } from "@/lib/cuisines";
 import { errorNotice } from "@/lib/errors";
+import {
+  installKind,
+  readInstallDismissed,
+  recordsDismissal,
+  writeInstallDismissed,
+  type InstallKind,
+  type InstallOrigin,
+  type InstallPromptEvent,
+} from "@/lib/install";
 import { getCurrentPosition, GeoError } from "@/lib/geo";
 import { pickAvoiding, pickDistinct, pickOne } from "@/lib/pick";
 import { pickPlaces, WINDOW_STEP } from "@/lib/places";
@@ -142,6 +151,22 @@ function screenNameOf(view: View): string {
   return view.kind === "loading" ? view.from : view.kind;
 }
 
+/**
+ * 홈 화면 추가 안내를 어떻게 보여 줄 상황인지 지금 브라우저에서 읽는다.
+ * 판정 규칙은 lib/install.ts가 갖고, 여기서는 브라우저 값을 모아 넘기기만 한다.
+ */
+function readInstallKind(hasPrompt: boolean): InstallKind {
+  return installKind({
+    userAgent: navigator.userAgent,
+    // 앞은 안드로이드·컴퓨터, 뒤는 아이폰이 "홈 화면에서 열렸다"를 알리는 방식이다.
+    standalone:
+      window.matchMedia("(display-mode: standalone)").matches ||
+      (navigator as { standalone?: boolean }).standalone === true,
+    maxTouchPoints: navigator.maxTouchPoints,
+    hasPrompt,
+  });
+}
+
 export default function Home() {
   const [view, setView] = useState<View>({ kind: "start" });
 
@@ -164,6 +189,14 @@ export default function Home() {
   // View는 화면을 옮길 때마다 통째로 갈아 끼우는 값이라, 그 안에 두면
   // 화면 하나 지나는 것만으로 설정이 날아간다.
   const [lastSpotName, setLastSpotName] = useState("");
+  // 홈 화면 추가 안내를 어떻게 보여 줄 상황인지. 처음 값이 "none"(안내 없음)인 것은
+  // 브라우저 값을 아직 읽기 전이기 때문이다 — 실제 값은 아래 useEffect가 채운다.
+  const [kind, setKind] = useState<InstallKind>("none");
+  // 결과 화면의 안내 상자를 닫은 적이 있는지. View 밖에 두는 이유는 위 값들과 같다.
+  const [installDismissed, setInstallDismissed] = useState(false);
+  // 브라우저가 보내 준 설치 신호. 설치 확인 창을 띄울 때 꺼내 쓴다. 화면에 그리는 값이
+  // 아니라서 상태가 아닌 ref에 둔다 — 화면은 이것이 있는지 없는지를 kind로만 안다.
+  const installPrompt = useRef<InstallPromptEvent | null>(null);
 
   const mainRef = useRef<HTMLElement>(null);
   const screenName = screenNameOf(view);
@@ -186,6 +219,40 @@ export default function Home() {
     setAvoidOn(readAvoidOn(store));
     setLastSpotName(readLastSpotName(store) ?? "");
     /* eslint-enable react-hooks/set-state-in-effect */
+  }, [store]);
+
+  // 홈 화면 추가 안내에 쓸 값을 읽고, 브라우저의 설치 신호를 기다린다.
+  //
+  // 여기서 받는 이유: 설치 신호(beforeinstallprompt)는 페이지가 열린 뒤 한 번만 오고,
+  // 그때 사용자가 어느 화면에 있을지 알 수 없다. 화면 조각 안에서 받으면 그 화면이
+  // 그려져 있지 않은 동안 온 신호를 놓친다.
+  //
+  // preventDefault로 브라우저가 스스로 띄우는 설치 권유를 막는다. 권유할 때는 우리가 정한다 —
+  // 한 곳을 정한 직후와, 사용자가 시작 화면의 링크를 눌렀을 때다.
+  //
+  // set-state-in-effect 예외의 까닭은 위 useEffect와 같다: 브라우저에만 있는 값이라 그리는
+  // 중에 읽으면 서버가 만든 화면과 첫 화면이 달라지고, 마운트 직후 한 번뿐이다.
+  useEffect(() => {
+    const refresh = () => setKind(readInstallKind(installPrompt.current !== null));
+    const onPrompt = (event: Event) => {
+      event.preventDefault();
+      installPrompt.current = event as InstallPromptEvent;
+      refresh();
+    };
+    const onInstalled = () => {
+      installPrompt.current = null;
+      refresh();
+    };
+    window.addEventListener("beforeinstallprompt", onPrompt);
+    window.addEventListener("appinstalled", onInstalled);
+    /* eslint-disable react-hooks/set-state-in-effect -- 까닭은 바로 위에 적었다 */
+    refresh();
+    setInstallDismissed(readInstallDismissed(store));
+    /* eslint-enable react-hooks/set-state-in-effect */
+    return () => {
+      window.removeEventListener("beforeinstallprompt", onPrompt);
+      window.removeEventListener("appinstalled", onInstalled);
+    };
   }, [store]);
 
   // 화면이 바뀌면 포커스를 새 화면 맨 위로 옮긴다. 옮기지 않으면 키보드·화면 낭독기
@@ -380,6 +447,33 @@ export default function Home() {
     setVisits(readVisits(store));
   }
 
+  function dismissInstall() {
+    writeInstallDismissed(store);
+    setInstallDismissed(true);
+  }
+
+  /** 브라우저의 설치 확인 창을 띄운다. origin은 어디서 눌렀는지다. */
+  async function requestInstall(origin: InstallOrigin) {
+    const event = installPrompt.current;
+    if (event === null) {
+      return;
+    }
+    // 설치 신호는 한 번만 쓸 수 있다. 창을 띄우기 전에 먼저 비워, 그 뒤로는 눌러도
+    // 아무 일도 일어나지 않는 버튼과 링크가 화면에 남지 않게 한다.
+    installPrompt.current = null;
+    setKind(readInstallKind(false));
+    try {
+      await event.prompt();
+      const { outcome } = await event.userChoice;
+      // 결과 화면에서 권한 것을 취소했을 때만 "닫았다"로 남긴다(lib/install.ts).
+      if (recordsDismissal(origin, outcome)) {
+        dismissInstall();
+      }
+    } catch {
+      // 창을 띄우지 못했다. 신호는 이미 쓴 것이라 이번 방문에는 다시 권할 수 없다.
+    }
+  }
+
   function toggleAvoid() {
     const next = !avoidOn;
     setAvoidOn(next);
@@ -525,6 +619,10 @@ export default function Home() {
           canRestore={canRestore(view.removed, view.released)}
           onToggleAvoid={toggleAvoid}
           onDecide={decided}
+          installKind={kind}
+          installDismissed={installDismissed}
+          onInstall={() => requestInstall("result")}
+          onDismissInstall={dismissInstall}
           decidedIds={visits.map((visit) => visit.placeId)}
           onShowVisits={() => setView({ kind: "visits" })}
           onReshuffle={reshufflePlaces}
