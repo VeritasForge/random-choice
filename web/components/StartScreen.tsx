@@ -1,4 +1,9 @@
+"use client";
+
+import { useEffect, useRef, useState } from "react";
+import { isOfferKind, type InstallKind } from "@/lib/install";
 import { RETENTION_DAYS } from "@/lib/visits";
+import InstallGuide from "./InstallGuide";
 
 /*
   노렌 한 폭. relative는 before(막대에 거는 고리)와 after(박음질)를 이 폭 안에 붙이기 위한 것이다.
@@ -18,6 +23,10 @@ type Props = {
   onStartElsewhere: () => void;
   loading: boolean;
   onShowVisits: () => void;
+  /** 홈 화면 추가 안내를 어떻게 보여 줄 상황인지(web/lib/install.ts). */
+  installKind: InstallKind;
+  /** 브라우저의 설치 확인 창을 띄운다. 설치 신호를 받은 브라우저에서만 불린다. */
+  onInstall: () => void;
 };
 
 export default function StartScreen({
@@ -27,7 +36,45 @@ export default function StartScreen({
   onStartElsewhere,
   loading,
   onShowVisits,
+  installKind,
+  onInstall,
 }: Props) {
+  // `홈 화면에 추가` 링크로 안내 상자를 펼쳤는지.
+  const [guideOpen, setGuideOpen] = useState(false);
+  const installLinkRef = useRef<HTMLButtonElement>(null);
+  // 방금 사용자가 상자를 닫았는지. 닫은 뒤 다시 나타난 링크로 초점을 돌려주는 데만 쓴다.
+  const justClosed = useRef(false);
+
+  // 상자로 방법을 보여 줄 수 있는 상황은 둘뿐이다. 설치 신호를 받은 브라우저(prompt)는
+  // 상자 없이 설치 확인 창을 곧바로 띄운다. 펼친 사이에 상황이 바뀌면(예: 그 사이 설치됨)
+  // 상자를 그리지 않고 소개 글로 돌아간다.
+  const showGuide = guideOpen && (installKind === "ios" || installKind === "in-app");
+  const showInstallLink = isOfferKind(installKind) && !showGuide;
+
+  // 상자를 닫으면 상자 안의 닫기 버튼이 사라져 초점이 body로 떨어진다. 다시 나타난 링크로
+  // 돌려주어 키보드 사용자가 자리를 잃지 않게 한다.
+  useEffect(() => {
+    if (!showGuide && justClosed.current) {
+      justClosed.current = false;
+      installLinkRef.current?.focus();
+    }
+  }, [showGuide]);
+
+  function openInstall() {
+    if (installKind === "prompt") {
+      onInstall();
+      return;
+    }
+    setGuideOpen(true);
+  }
+
+  // 여기서 닫는 것은 "닫았다"로 남기지 않는다. 사용자가 링크를 스스로 눌러 열어 본 것이지
+  // 우리의 권유를 거절한 것이 아니어서, 결과 화면의 안내까지 막으면 안 된다.
+  function closeInstall() {
+    justClosed.current = true;
+    setGuideOpen(false);
+  }
+
   return (
     /*
       grow와 my-auto를 함께 쓰는 이유: 주요 버튼을 화면 아래쪽에 두기 위해서다.
@@ -59,6 +106,20 @@ export default function StartScreen({
             <span className={NOREN_PANEL}>먹지?</span>
           </h1>
         </div>
+        {/*
+          `홈 화면에 추가` 링크를 누르면 소개 글 자리에 방법을 펼친다. 화면을 따로 만들지 않는
+          까닭: 안내가 서너 줄뿐이라, 화면을 늘려 돌아가기 처리를 더하는 값을 하지 못한다.
+        */}
+        {showGuide ? (
+          <div className="w-full max-w-xs">
+            <InstallGuide
+              kind={installKind}
+              variant="direct"
+              onInstall={onInstall}
+              onClose={closeInstall}
+            />
+          </div>
+        ) : (
         <div className="flex max-w-xs flex-col gap-3 rounded-xl border border-line bg-background px-4 py-3">
         <p className="text-base leading-relaxed text-balance break-keep text-muted">
           주변에 있는 음식점을 보고 <strong className="font-semibold">무엇을 먹을지</strong>부터
@@ -75,6 +136,7 @@ export default function StartScreen({
           정한 가게({RETENTION_DAYS}일)만 남아요.
         </p>
         </div>
+        )}
       </div>
 
       <div className="flex w-full flex-col items-center gap-3">
@@ -125,14 +187,32 @@ export default function StartScreen({
           잃는다. disabled 대신 aria-disabled를 쓰는 까닭은 위 버튼과 같다 —
           포커스를 떨어뜨리지 않기 위한 것이다.
         */}
-        <button
-          type="button"
-          onClick={loading ? undefined : onShowVisits}
-          aria-disabled={loading}
-          className="btn rounded-full bg-background px-5 text-muted underline underline-offset-4"
-        >
-          최근 기록 보기
-        </button>
+        <div className="flex flex-wrap justify-center gap-2">
+          <button
+            type="button"
+            onClick={loading ? undefined : onShowVisits}
+            aria-disabled={loading}
+            className="btn rounded-full bg-background px-5 text-muted underline underline-offset-4"
+          >
+            최근 기록 보기
+          </button>
+          {/*
+            결과 화면의 안내를 닫은 사람이 나중에 다시 찾을 수 있는 길이다. 그래서 닫았다는
+            표시와 무관하게 남긴다. 안내할 수 없는 상황에서는 그리지 않는다 — 눌러도 아무
+            일도 일어나지 않는 링크가 되기 때문이다. 조회 중에 막는 까닭은 위 버튼과 같다.
+          */}
+          {showInstallLink ? (
+            <button
+              ref={installLinkRef}
+              type="button"
+              onClick={loading ? undefined : openInstall}
+              aria-disabled={loading}
+              className="btn rounded-full bg-background px-5 text-muted underline underline-offset-4"
+            >
+              홈 화면에 추가
+            </button>
+          ) : null}
+        </div>
         {/*
           눈에는 보이지 않고 화면 낭독기만 읽는 영역. 로딩이 "시작되는 것"을 소리로 알린다.
           버튼 글자만 바꾸면 포커스가 그 버튼에 없는 사람은 알 수 없기 때문이다.

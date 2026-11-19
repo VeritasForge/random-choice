@@ -556,6 +556,8 @@ export default function Home() {
           }
           loading={view.kind === "loading"}
           onShowVisits={() => setView({ kind: "visits" })}
+          installKind={kind}
+          onInstall={() => requestInstall("start")}
         />
       )}
 
