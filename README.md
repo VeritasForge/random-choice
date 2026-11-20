@@ -309,7 +309,7 @@ cd web && vercel deploy --prod --yes --archive=tgz    # 화면을 고쳤을 때
 | `random-choice` 프로젝트 | `API_ORIGIN` | 위 서버 주소. 없으면 배포본의 모든 조회가 실패합니다 |
 | `random-choice` 프로젝트 | `INTERNAL_API_KEY` | 바로 위 `api` 쪽과 **똑같은 값** |
 | `api` 프로젝트 | `DATABASE_URL` | 접속 통계를 쌓는 데이터베이스(Neon Postgres)의 연결 주소. Vercel의 Neon 연동이 자동으로 등록하며 Production과 Development에만 들어 있습니다. 없으면 방문·통계 경로 둘만 "설정되지 않음"으로 답합니다 |
-| `random-choice` 프로젝트 | `STATS_PASSWORD` | `/stats`를 여는 비밀번호. 없으면 아무도 `/stats`에 들어가지 못합니다 |
+| `random-choice` 프로젝트 | `STATS_PASSWORD` | `/stats`를 여는 비밀번호. 없으면 아무도 `/stats`에 들어가지 못합니다. 바꿀 때는 `just stats-password`를 씁니다(새 값을 등록한 뒤, 지금 올라가 있는 화면을 그대로 다시 빌드해 적용합니다) |
 
 **`INTERNAL_API_KEY`를 왜 두는가.** 서버 주소는 인터넷에 열려 있고, 조회 한 번이 카카오를
 최대 123번 부릅니다. 하루 한도가 10만 건이니 813번쯤이면 그날치가 소진되고, 그때부터는
