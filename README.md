@@ -203,7 +203,7 @@ sequenceDiagram
 
 **데이터베이스.** Vercel의 Neon 연동으로 붙였고(자원 이름 `random-choice-stats`, 무료 플랜), 지역은 연동이 서울을 주지 않아 싱가포르입니다. Neon 무료 플랜은 카드 등록이 필요 없고 저장 1GB까지이며, 한도를 넘으면 요금이 아니라 다음 달까지 정지입니다(데이터는 지워지지 않습니다). 5분간 요청이 없으면 잠듭니다. 테이블(`visits`)은 첫 방문 기록이나 첫 조회가 들어올 때 없으면 서버가 만들며, 지금은 집계 시험을 이 데이터베이스에 돌려 본 적이 있어 이미 있습니다(시험이 넣은 행은 되돌렸습니다). 연결 주소는 연동이 `api` 프로젝트에 환경변수 `DATABASE_URL`로 자동 등록합니다. 이 값이 없으면 서버는 그대로 뜨고 방문·통계 경로 둘만 "설정되지 않음"으로 답하며, 주변 음식점·장소 검색은 영향을 받지 않습니다.
 
-**주의.** 개발(Development) 환경의 `DATABASE_URL`은 별도 개발용 복사본이 아니라 **실서비스와 같은 데이터베이스**를 가리킵니다(Neon 데이터베이스는 하나뿐입니다). 그래서 이 주소를 내 컴퓨터에서 띄운 서버에 불러 넣으면 로컬 방문이 실제 통계에 섞입니다. `just dev`는 `api/.env`만 읽고 `api/.env.local`은 읽지 않으므로 저절로 그렇게 되지는 않습니다.
+**주의.** 개발(Development) 환경의 `DATABASE_URL`은 별도 개발용 복사본이 아니라 **실서비스와 같은 데이터베이스**를 가리킵니다(Neon 데이터베이스는 하나뿐입니다). 그래서 이 주소를 내 컴퓨터에서 띄운 서버에 불러 넣으면 로컬 방문이 실제 통계에 섞입니다. `just dev`는 `api/.env`만 읽고 `api/.env.local`은 읽지 않으므로 저절로 그렇게 되지는 않습니다. 내 컴퓨터에서 접속 통계를 확인할 때는 이 주소 대신 개발용 데이터베이스를 씁니다(아래 "접속 통계까지 내 컴퓨터에서 보려면" 참고).
 
 ## 시작하기
 
@@ -242,6 +242,35 @@ API_ORIGIN=http://localhost:8090 npm run dev
 ```
 
 브라우저에서 http://localhost:3000 을 엽니다. 위치 권한을 물으면 허용하세요.
+
+### 접속 통계까지 내 컴퓨터에서 보려면 (개발용 데이터베이스)
+
+위 두 단계만으로 서비스 화면은 다 돌아갑니다. 다만 데이터베이스가 없어서 방문이 기록되지 않고, `/stats`는 "통계를 불러오지 못했어요. (상태 503)"이라고만 답합니다. 접속 통계를 내 컴퓨터에서 확인하려면 개발용 데이터베이스를 따로 켭니다. 실서비스 데이터베이스와는 아무 연결이 없으므로 마음대로 넣고 지워도 됩니다.
+
+Docker가 필요합니다(Docker Desktop이나 OrbStack 등). 저장소 맨 위의 `compose.yaml`이 Postgres 하나를 띄웁니다.
+
+```bash
+just db                # 개발용 데이터베이스를 켠다 (localhost:5433)
+echo 'DATABASE_URL=postgres://random_choice:random_choice@localhost:5433/random_choice?sslmode=disable' >> api/.env
+echo 'STATS_PASSWORD=아무_값' >> web/.env.local    # /stats를 여는 비밀번호. 내 컴퓨터에서만 쓰인다
+just dev               # 서버와 화면을 (다시) 켠다
+```
+
+`echo` 두 줄은 처음 한 번만 하면 됩니다. 이 주소와 계정(`random_choice`)은 내 컴퓨터 안에서만 통하는 값이라 저장소에 적혀 있어도 괜찮습니다. 테이블은 서버가 처음 쓸 때 스스로 만듭니다.
+
+http://localhost:3000 을 열면 방문 한 건이 기록되고, http://localhost:3000/stats 에서 볼 수 있습니다. `/stats`를 한 번 연 브라우저는 그 뒤로 방문을 보내지 않으니, 기록이 쌓이는 것을 보려면 `/stats`보다 `/`를 먼저 열거나 다른 브라우저(또는 시크릿 창)로 `/`를 엽니다.
+
+| 명령 | 하는 일 |
+|---|---|
+| `just db` | 개발용 데이터베이스를 켠다 |
+| `just db-stop` | 끈다. 쌓인 기록은 남는다 |
+| `just db-reset` | 끄고 쌓인 기록까지 지운다 |
+
+집계 시험도 이 데이터베이스로 돌릴 수 있습니다. 이 시험은 주소를 주지 않으면 건너뛰고, 돌린 뒤에는 넣은 행을 되돌립니다.
+
+```bash
+cd api && STATS_TEST_DATABASE_URL='postgres://random_choice:random_choice@localhost:5433/random_choice?sslmode=disable' go test ./internal/stats/
+```
 
 ### 3. 잘 도는지 확인하기
 

@@ -23,6 +23,18 @@ api:
     fi
     PORT=8090 go run ./cmd/server
 
+# 개발용 데이터베이스(Postgres)를 Docker로 켠다. 접속 통계를 내 컴퓨터에서 확인할 때 쓴다(README "개발용 데이터베이스" 참고).
+db:
+    docker compose up -d --wait
+
+# 개발용 데이터베이스를 끈다. 쌓인 기록은 남는다.
+db-stop:
+    docker compose down
+
+# 개발용 데이터베이스를 끄고 쌓인 기록까지 지운다.
+db-reset:
+    docker compose down -v
+
 # 웹 화면만 켠다 (http://localhost:3000). 위 API 서버(8090)를 보도록 API_ORIGIN을 넘긴다.
 web:
     cd web && API_ORIGIN=http://localhost:8090 npm run dev
