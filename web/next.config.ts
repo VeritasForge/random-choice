@@ -26,7 +26,8 @@ if (!process.env.API_ORIGIN && process.env.NODE_ENV === "production") {
 
 // 검색엔진과 메신저에 알리는 이 서비스의 주소다(읽는 곳은 lib/site.ts). 없어도 화면은
 // 멀쩡히 돌아가서 알아채기 어려우므로, 위와 같은 방식으로 여기서 알린다.
-if (!process.env.SITE_URL && process.env.NODE_ENV === "production") {
+// 빈칸뿐인 값도 없는 것으로 친다. lib/site.ts가 그렇게 읽으므로 여기서도 같아야 한다.
+if (!process.env.SITE_URL?.trim() && process.env.NODE_ENV === "production") {
   console.warn(
     "[random-choice] SITE_URL이 설정되지 않았습니다. 대표 주소·사이트맵·링크 미리보기가 " +
       "http://localhost:3000 으로 나가므로, 검색엔진과 메신저가 이 서비스의 주소를 잘못 알게 됩니다.",

@@ -15,6 +15,18 @@ describe("정식 주소", () => {
   it("https://를 빼먹으면 이름을 밝힌 오류를 낸다", () => {
     expect(() => siteUrl({ SITE_URL: "a.example" })).toThrow(/SITE_URL/);
   });
+  it("포트만 붙이고 https://를 빼먹어도 같은 오류를 낸다", () => {
+    expect(() => siteUrl({ SITE_URL: "localhost:3000" })).toThrow(/SITE_URL/);
+    expect(() => siteUrl({ SITE_URL: "my.domain:443" })).toThrow(/SITE_URL/);
+  });
+  it("웹 주소가 아닌 것은 받지 않는다", () => {
+    expect(() => siteUrl({ SITE_URL: "ftp://x" })).toThrow(/SITE_URL/);
+    expect(() => siteUrl({ SITE_URL: "mailto:a@b.c" })).toThrow(/SITE_URL/);
+  });
+  it("주소 뒤에 붙은 경로·물음표 뒤는 떼고, 대소문자와 기본 포트를 정리한다", () => {
+    expect(siteUrl({ SITE_URL: "https://a.example/?x=1" })).toBe("https://a.example");
+    expect(siteUrl({ SITE_URL: "HTTPS://A.Example:443/app/" })).toBe("https://a.example");
+  });
 });
 
 describe("head 정보", () => {

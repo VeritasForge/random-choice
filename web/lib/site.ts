@@ -22,18 +22,25 @@ const DEV_URL = "http://localhost:3000";
  * 끝에 "/"가 없는 정식 주소. 예: "https://a.example"
  *
  * SITE_URL이 없으면 개발용 주소를 돌려준다(정식 빌드에서는 next.config.ts가 경고한다).
- * 값이 있는데 주소 꼴이 아니면 멈춘다. "https://"를 빼먹은 값을 그대로 내보내면
+ * 값이 있는데 웹 주소 꼴이 아니면 멈춘다. "https://"를 빼먹은 값을 그대로 내보내면
  * 검색엔진이 틀린 주소를 대표 주소로 기억하는데, 화면에는 아무 단서도 남지 않기 때문이다.
+ *
+ * 받은 글자를 그대로 돌려주지 않고 읽어 낸 결과(origin)를 돌려준다. 그래야 글자를 이어 붙여
+ * 주소를 만드는 robots.ts·sitemap.ts와, 주소로 읽어 쓰는 metadataBase가 같은 주소를 낸다.
+ * 뒤에 붙은 경로는 뗀다. 이 서비스는 주소의 맨 위에서만 열린다.
  */
 export function siteUrl(env: Env = process.env): string {
   const raw = env.SITE_URL?.trim();
   if (!raw) return DEV_URL;
-  if (!URL.canParse(raw)) {
+  // "localhost:3000"처럼 앞머리를 빼먹은 값도 주소로 읽히기는 한다("localhost:"가 앞머리가 된다).
+  // 그래서 읽히는지만 보지 않고 앞머리가 웹 주소의 것인지까지 본다.
+  const url = URL.canParse(raw) ? new URL(raw) : null;
+  if (!url || (url.protocol !== "https:" && url.protocol !== "http:")) {
     throw new Error(
-      `[random-choice] SITE_URL이 주소 꼴이 아닙니다: "${raw}". https://로 시작하는 전체 주소를 넣어 주세요.`,
+      `[random-choice] SITE_URL이 웹 주소 꼴이 아닙니다: "${raw}". https://로 시작하는 전체 주소를 넣어 주세요.`,
     );
   }
-  return raw.replace(/\/+$/, "");
+  return url.origin;
 }
 
 /** 소유 확인 코드. 둘 다 없으면 항목 자체를 만들지 않아, 내용이 빈 태그가 나가지 않는다. */
