@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { Noto_Serif_KR } from "next/font/google";
+import { siteMetadata } from "@/lib/site";
 import "./globals.css";
 
 /*
@@ -12,10 +13,9 @@ import "./globals.css";
 */
 const bodyFont = Noto_Serif_KR({ subsets: ["latin"], variable: "--font-body", display: "swap" });
 
-export const metadata: Metadata = {
-  title: "오늘은 뭐 먹지?",
-  description: "주변 음식점을 보고 무엇을 먹을지 대신 정해 드립니다.",
-};
+// 무엇이 들어가는지는 lib/site.ts에 있다. 이 파일은 글꼴을 불러와서 시험에서 읽을 수 없으므로
+// 판단을 그쪽에 두었다.
+export const metadata: Metadata = siteMetadata();
 
 /*
   colorScheme: 브라우저가 스크롤바·기본 위젯을 화면 밝기에 맞춰 그리게 한다.
