@@ -329,7 +329,7 @@ cd web && vercel deploy --prod --yes --archive=tgz    # 화면을 고쳤을 때
 빌드에 굳지 않습니다. 화면을 먼저 올리면 그사이 화면이 아직 없는 서버를 가리키는 순간이
 생기는데, 서버를 먼저 두면 그 틈이 없습니다.
 
-### 환경변수 — 두 프로젝트에 여섯 자리
+### 환경변수 — 두 프로젝트에 아홉 자리
 
 | 어디 | 이름 | 무엇 |
 |---|---|---|
@@ -339,6 +339,9 @@ cd web && vercel deploy --prod --yes --archive=tgz    # 화면을 고쳤을 때
 | `random-choice` 프로젝트 | `INTERNAL_API_KEY` | 바로 위 `api` 쪽과 **똑같은 값** |
 | `api` 프로젝트 | `DATABASE_URL` | 접속 통계를 쌓는 데이터베이스(Neon Postgres)의 연결 주소. Vercel의 Neon 연동이 자동으로 등록하며 Production과 Development에만 들어 있습니다. 없으면 방문·통계 경로 둘만 "설정되지 않음"으로 답합니다 |
 | `random-choice` 프로젝트 | `STATS_PASSWORD` | `/stats`를 여는 비밀번호. 없으면 아무도 `/stats`에 들어가지 못합니다. 바꿀 때는 `just stats-password`를 씁니다(새 값을 등록한 뒤, 지금 올라가 있는 화면을 그대로 다시 빌드해 적용합니다) |
+| `random-choice` 프로젝트 | `SITE_URL` | 이 서비스의 정식 주소(`https://`로 시작). 대표 주소·사이트맵·링크 미리보기가 이 값으로 나갑니다. 없으면 `http://localhost:3000`으로 나가고 빌드할 때 경고가 뜹니다. `https://`를 빼먹으면 빌드가 멈춥니다 |
+| `random-choice` 프로젝트 | `GOOGLE_SITE_VERIFICATION` | Google Search Console이 발급한 소유 확인 코드. 없으면 확인 태그를 내지 않습니다 |
+| `random-choice` 프로젝트 | `NAVER_SITE_VERIFICATION` | 네이버 서치어드바이저가 발급한 소유 확인 코드. 없으면 확인 태그를 내지 않습니다 |
 
 **`INTERNAL_API_KEY`를 왜 두는가.** 서버 주소는 인터넷에 열려 있고, 조회 한 번이 카카오를
 최대 123번 부릅니다. 하루 한도가 10만 건이니 813번쯤이면 그날치가 소진되고, 그때부터는
@@ -392,6 +395,50 @@ cd web && vercel deploy --prod --yes --archive=tgz    # 화면을 고쳤을 때
 넣어야 하고, 그러면 위에 적은 대로 실서비스의 카카오 한도를 함께 쓰게 됩니다.
 화면만 보는 것(글자·배치·이동)은 지금 상태로도 됩니다.
 
+### 검색엔진에 등록하기
+
+**왜 하는가.** 등록해야 검색엔진이 페이지 목록(`/sitemap.xml`)을 받아 가고, 사람들이 어떤
+검색어로 이 서비스에 들어오는지를 통계로 볼 수 있습니다. 다음에 무엇을 만들지는 그 통계를
+보고 정합니다.
+
+**이미 되어 있는 것.** 화면 서버가 아래 넷을 스스로 내보냅니다. 주소는 모두 환경변수
+`SITE_URL`에서 나오고, 그 값을 읽는 코드는 `web/lib/site.ts` 한 곳뿐입니다.
+
+| 무엇 | 어디서 보나 | 만드는 파일 |
+|---|---|---|
+| 가져가도 되는 범위 | `정식 주소/robots.txt` | `web/app/robots.ts` |
+| 페이지 목록(시작 화면 하나) | `정식 주소/sitemap.xml` | `web/app/sitemap.ts` |
+| 대표 주소, 링크를 붙였을 때의 제목·설명, 소유 확인 태그 | 시작 화면의 `<head>` | `web/lib/site.ts` |
+| 링크를 붙였을 때의 그림 | `<head>`의 `og:image` 주소 | `web/assets/og-image.svg`를 고친 뒤 `cd web && node scripts/make-icons.mjs` |
+
+**등록하는 순서** (계정 로그인이 필요해서 사람이 합니다).
+
+1. Google Search Console과 네이버 서치어드바이저에서 사이트 주소를 추가하고, "HTML 태그"
+   방식의 소유 확인 코드를 발급받습니다.
+2. 발급된 태그에서 `content` 값만 떼어 `random-choice` 프로젝트의 정식(Production) 환경에
+   `GOOGLE_SITE_VERIFICATION`, `NAVER_SITE_VERIFICATION`으로 넣습니다.
+   네이버가 보여 주는 태그의 `name`이 `naver-site-verification`이 아니면 `web/lib/site.ts`에
+   적힌 이름을 그것에 맞춥니다(이 이름은 네이버 화면에서 직접 확인하지 못한 채 적었습니다).
+3. 다시 올립니다(`just deploy-web`). 시작 화면은 빌드할 때 만들어지므로, 환경변수만 바꾸고
+   다시 올리지 않으면 반영되지 않습니다.
+4. 두 곳에서 "확인"을 누르고, 사이트맵 주소(`정식 주소/sitemap.xml`)를 제출합니다.
+
+**바꾼 뒤 확인하는 법.** `curl -s 정식주소/robots.txt`에 정식 주소가 든 `Sitemap:` 줄이
+나오는지 보고, 카카오톡 대화방에 주소를 붙여 제목·설명·그림이 나오는지 봅니다. 메신저는
+미리보기를 한동안 기억해 두므로, 고친 뒤에도 예전 모습이 나올 수 있습니다.
+
+**자체 도메인으로 옮길 때.** 코드는 고치지 않습니다. `SITE_URL`을 새 주소로 바꿔 다시
+올리고, Vercel에서 옛 주소가 새 주소로 넘어가게 설정하고, 두 검색엔진에 새 주소를 다시
+등록합니다. 검색엔진의 평가는 주소 단위로 쌓이므로 옮긴 직후에는 노출이 흔들릴 수 있습니다.
+
+**`/stats`를 `robots.txt`에 적지 않은 이유.** 그 화면을 검색에서 지켜 주는 것은
+비밀번호입니다. 비밀번호가 없는 요청은 화면 내용을 받지 못하므로 검색엔진이 가져갈 것이
+없습니다. 반대로 `robots.txt`는 누구나 읽을 수 있는 파일이라, 거기에 적으면 운영자용 화면의
+주소를 알리는 셈이 됩니다.
+
+**미리보기 배포는 따로 막지 않습니다.** Vercel이 미리보기 배포에 검색 제외 헤더를 스스로
+붙입니다.
+
 ## 폴더 구조
 
 ```
@@ -411,6 +458,9 @@ web/                        Next.js 화면
 ├── app/page.tsx            다섯 화면 사이의 이동을 관리한다. 브라우저의 설치 신호도 여기서 받아 둔다
 ├── app/manifest.ts         홈 화면에 추가할 때 브라우저가 읽는 앱 정보(이름, 아이콘, 바탕색)
 ├── app/apple-icon.png      아이폰 홈 화면용 아이콘
+├── app/robots.ts           검색엔진에 가져가도 되는 범위를 알린다(`/robots.txt`)
+├── app/sitemap.ts          검색엔진에 페이지 목록을 알린다(`/sitemap.xml`)
+├── app/opengraph-image.png 링크를 붙였을 때 나오는 그림(가로 1200, 세로 630)
 ├── app/api/v1/nearby/route.ts  브라우저의 조회를 Go 서버로 넘기는 자리 (환경변수만 읽는 껍데기)
 ├── app/api/v1/places/route.ts  브라우저의 장소 검색을 Go 서버로 넘기는 자리 (환경변수만 읽는 껍데기)
 ├── app/api/v1/visits/route.ts  브라우저가 보낸 방문을 Go 서버로 넘기는 자리 (POST)
@@ -442,12 +492,13 @@ web/                        Next.js 화면
     ├── visitor.ts          익명 ID를 만들어 두고 방문을 보낼지 판단한다 (30분 규칙, 운영자 표시)
     ├── stats.ts            `/stats` 화면의 판단 — 주소의 단위 읽기, Go 서버에서 통계 받아 오기
     ├── statsAuth.ts        `/stats` 비밀번호 비교 (길이·내용이 응답 시간에 드러나지 않게)
+    ├── site.ts             정식 주소(`SITE_URL`)를 읽는 한 곳. 검색엔진·메신저에 알리는 `<head>` 정보를 만든다
     ├── proxy.ts            중계 규칙 — 비밀 헤더 붙이기, 응답을 그대로 넘기기, 캐시 금지 지키기
     ├── geo.ts              브라우저에 현재 위치 묻기
     ├── errors.ts           오류 코드 → 화면 안내 문구
     └── radius.ts           조회에 쓰는 기본 반경 상수(카카오 결과에는 영향이 없다)
-├── assets/                 홈 화면 아이콘의 원본 그림
-├── scripts/make-icons.mjs  원본 그림에서 크기별 아이콘 파일을 만든다 (그림을 고쳤을 때만 돌린다)
+├── assets/                 홈 화면 아이콘과 링크 미리보기 그림의 원본
+├── scripts/make-icons.mjs  원본 그림에서 크기별 아이콘 파일과 링크 미리보기 그림을 만든다 (그림을 고쳤을 때만 돌린다)
 ├── public/icon-*.png       만들어진 아이콘 파일
 └── vercel.json             배포할 때 실행 지역을 서울로 지정
 
