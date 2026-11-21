@@ -37,4 +37,7 @@ describe("앱 정보 파일", () => {
     expect(pngSize("public/icon-maskable-512.png")).toEqual([512, 512]);
     expect(pngSize("app/apple-icon.png")).toEqual([180, 180]);
   });
+  it("링크 미리보기 그림은 가로 1200, 세로 630이다", () => {
+    expect(pngSize("app/opengraph-image.png")).toEqual([1200, 630]);
+  });
 });
