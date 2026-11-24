@@ -229,7 +229,7 @@ components:
 - **Danger Quiet (`btn-danger-quiet`):** 되돌릴 수 없는 지우기("전체 지우기") 전용입니다. 글자와 테두리를 `tea-grey`로 한 단 물려 "여기가 다음 걸음이 아니다"를 옷으로 말합니다. 강조색은 쓰지 않습니다.
 - **Small (`btn-sm`):** 줄 안에 들어가는 버튼입니다. 좌우 여백만 14px로 줄이고 높이 48px과 글자 크기는 그대로 둡니다.
 - **Text Link:** 시작·검색 화면의 "최근 기록 보기", "돌아가기"는 테두리 없이 `tea-grey` 글자에 밑줄(`underline-offset: 4px`)만 둡니다.
-- **Disabled:** `disabled` 속성이 아니라 `aria-disabled="true"`를 씁니다(포커스를 유지하기 위해). 불투명도 0.6으로 흐리게 그립니다.
+- **Disabled:** `disabled` 속성이 아니라 `aria-disabled="true"`를 씁니다(포커스를 유지하기 위해). 불투명도 0.6으로 흐리게 그리고, 호버 색과 누를 때의 반짝임(tap highlight)은 주지 않습니다(눌릴 것처럼 보이지 않게).
 
 ### Cuisine Cards
 - **Style:** 후보 화면의 음식 종류 선택 카드. 종이색 바닥에 1px `clay-line` 테두리, 모서리 16px, 최소 높이 112px, 세로 정렬

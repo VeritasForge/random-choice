@@ -251,17 +251,28 @@
   }
 
   /*
+    누를 수 없는 버튼은 눌릴 것처럼 반응하지 않게 한다. 흐리게 그려 놓고 호버에서 색이
+    진해지거나 손가락으로 누를 때 강조색 반짝임이 뜨면 "눌렸다"는 신호가 되어, 흐림이
+    말하는 "지금은 누를 수 없음"과 어긋난다. 그래서 아래 호버 규칙은 전부
+    :not([aria-disabled="true"])로 거르고, 반짝임은 여기서 끈다(.btn이 켜 두므로
+    base 층의 [aria-disabled="true"] 규칙으로는 덮을 수 없다).
+  */
+  .btn[aria-disabled="true"] {
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  /*
     hover: hover로 감싸는 이유: 손가락으로 누르는 기기에서는 hover가 "누른 뒤 그대로
     남는 색"이 되어, 방금 누른 버튼이 계속 눌린 것처럼 보인다.
   */
   @media (hover: hover) {
-    .btn-primary:hover {
+    .btn-primary:not([aria-disabled="true"]):hover {
       background: color-mix(in oklab, var(--accent) 88%, var(--foreground));
     }
 
     /* 바탕만 채우면 글자 대비가 오히려 조금 내려간다(16.50:1 → 14.87:1).
        테두리를 함께 진하게 해 눌릴 자리가 더 또렷해지도록 한다. */
-    .btn-quiet:hover {
+    .btn-quiet:not([aria-disabled="true"]):hover {
       background: var(--surface);
       border-color: var(--foreground);
     }
@@ -280,7 +291,7 @@
       네 줄이 한꺼번에 칠해질 걱정은 없다. 호버는 한 번에 한 줄에만 걸리고,
       손가락으로 누르는 기기에서는 위 @media (hover: hover)가 이 규칙 자체를 막는다.
     */
-    .btn-accent-quiet:hover {
+    .btn-accent-quiet:not([aria-disabled="true"]):hover {
       background: var(--accent);
       color: var(--accent-ink);
     }
@@ -288,7 +299,7 @@
     /* 물려 둔 것을 호버에서만 글자색까지 끌어올린다. 바탕은 채우지 않는다 —
        채우면 여기서도 글자 대비가 내려간다. 명암비는 곁글색 대 글자색으로
        밝은 화면 5.46:1 → 16.50:1, 어두운 화면 6.71:1 → 15.48:1로 올라간다. */
-    .btn-danger-quiet:hover {
+    .btn-danger-quiet:not([aria-disabled="true"]):hover {
       border-color: var(--foreground);
       color: var(--foreground);
     }
