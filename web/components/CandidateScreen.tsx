@@ -2,8 +2,13 @@ import type { Cuisine } from "@/lib/api";
 import { countLabel } from "@/lib/reasons";
 
 type Props = {
-  candidates: Cuisine[];
+  candidates: readonly Cuisine[];
   onChoose: (cuisine: Cuisine) => void;
+  /** 앞서 본 묶음이 있는가. 없으면 `이전 후보`는 눌러도 아무 일도 안 한다. */
+  canPrev: boolean;
+  onPrev: () => void;
+  /** 넘길 새 묶음이 있는가. 가까운 종류가 넷 이하면 거짓이다. */
+  canReshuffle: boolean;
   onReshuffle: () => void;
   onDecideForMe: () => void;
   /**
@@ -22,6 +27,9 @@ type Props = {
 export default function CandidateScreen({
   candidates,
   onChoose,
+  canPrev,
+  onPrev,
+  canReshuffle,
   onReshuffle,
   onDecideForMe,
   whereLabel,
@@ -74,8 +82,8 @@ export default function CandidateScreen({
 
         {/*
           눈에는 보이지 않고 화면 낭독기만 읽는 영역.
-          "다시 뽑기"는 화면 이름을 바꾸지 않아 포커스가 움직이지 않으므로, 이것이 없으면
-          낭독기 사용자는 버튼을 누르고도 후보가 바뀌었는지 아무 소리도 듣지 못한다.
+          "다시 뽑기"·"이전 후보"는 화면 이름을 바꾸지 않아 포커스가 움직이지 않으므로,
+          이것이 없으면 낭독기 사용자는 버튼을 누르고도 후보가 바뀌었는지 아무 소리도 듣지 못한다.
           내용이 바뀔 때만 읽히므로 처음 들어올 때는 조용하다 — 그때는 포커스 이동이 알린다.
         */}
         <p role="status" aria-live="polite" className="sr-only">
@@ -88,9 +96,33 @@ export default function CandidateScreen({
         이 화면에서 다음 걸음은 "정해 주세요" 하나이기 때문이다.
       */}
       <div className="flex w-full flex-col gap-3">
-        <button type="button" onClick={onReshuffle} className="btn btn-quiet w-full">
-          다시 뽑기
-        </button>
+        {/*
+          누를 수 없을 때 disabled가 아니라 aria-disabled를 쓴다(DESIGN.md Disabled) —
+          disabled는 포커스에서 빠져 낭독기 사용자가 버튼이 있다는 것조차 모르게 된다.
+          클릭은 여기서 무시한다.
+        */}
+        <div className="grid grid-cols-2 gap-3">
+          <button
+            type="button"
+            aria-disabled={!canPrev}
+            onClick={() => {
+              if (canPrev) onPrev();
+            }}
+            className="btn btn-quiet"
+          >
+            이전 후보
+          </button>
+          <button
+            type="button"
+            aria-disabled={!canReshuffle}
+            onClick={() => {
+              if (canReshuffle) onReshuffle();
+            }}
+            className="btn btn-quiet"
+          >
+            다시 뽑기
+          </button>
+        </div>
         <button type="button" onClick={onDecideForMe} className="btn btn-primary w-full">
           못 고르겠어요, 정해 주세요
         </button>

@@ -18,6 +18,15 @@ import {
   type Place,
 } from "@/lib/api";
 import { avoidVisited } from "@/lib/avoid";
+import {
+  type Browse,
+  browseNext,
+  browsePrev,
+  canGoBack,
+  canGoForward,
+  currentPage,
+  startBrowse,
+} from "@/lib/browse";
 import { distinctById } from "@/lib/cuisines";
 import { errorNotice } from "@/lib/errors";
 import {
@@ -30,7 +39,7 @@ import {
   type InstallPromptEvent,
 } from "@/lib/install";
 import { getCurrentPosition, GeoError } from "@/lib/geo";
-import { pickAvoiding, pickDistinct, pickOne } from "@/lib/pick";
+import { pickOne } from "@/lib/pick";
 import { pickPlaces, WINDOW_STEP } from "@/lib/places";
 import { DEFAULT_RADIUS, WIDER_RADIUS } from "@/lib/radius";
 import { avoidNotice, canRestore } from "@/lib/reasons";
@@ -95,7 +104,13 @@ type View =
        */
       returnTo: Extract<View, { kind: "start" | "candidates" | "result" }>;
     }
-  | { kind: "candidates"; anchor: Anchor; result: NearbyResult; candidates: Cuisine[] }
+  | {
+      kind: "candidates";
+      anchor: Anchor;
+      result: NearbyResult;
+      /** 넘겨 본 종류의 기록. 지금 보이는 넷은 currentPage(cuisines)다. */
+      cuisines: Browse<Cuisine>;
+    }
   | {
       kind: "result";
       anchor: Anchor;
@@ -104,7 +119,8 @@ type View =
        * 들고 있지 않으면 조회를 다시 해야 하는데, 그것은 카카오를 최대 123번 더 부르는 일이다.
        */
       result: NearbyResult;
-      candidates: Cuisine[];
+      /** 후보 화면으로 돌아갈 때 위치를 그대로 잇도록 기록째 들고 있는다. */
+      cuisines: Browse<Cuisine>;
       /**
        * 고른 종류의 가게 **전부**. 회피를 적용하기 **전**의 목록이다.
        * 회피를 껐을 때 빠졌던 가게를 되돌리려면 이것이 있어야 한다 —
@@ -289,7 +305,7 @@ export default function Home() {
         kind: "candidates",
         anchor,
         result,
-        candidates: pickDistinct(cuisines, CANDIDATE_COUNT, Math.random),
+        cuisines: startBrowse(cuisines, CANDIDATE_COUNT, Math.random),
       });
     } catch (error) {
       // 오류의 출처가 셋이고, 각각 코드를 담는 방식이 다르다.
@@ -365,11 +381,18 @@ export default function Home() {
 
   function reshuffle() {
     if (view.kind !== "candidates") return;
+    // 참조 비교 계약: 기록은 항목을 객체 참조로 알아보므로, 목록은 start에서
+    // 넘긴 것과 같은 객체들이어야 한다. distinctById가 매번 같은 객체를 돌려준다.
     const cuisines = distinctById(view.result.cuisines);
     setView({
       ...view,
-      candidates: pickAvoiding(cuisines, CANDIDATE_COUNT, view.candidates, Math.random),
+      cuisines: browseNext(view.cuisines, cuisines, CANDIDATE_COUNT, Math.random),
     });
+  }
+
+  function prevCandidates() {
+    if (view.kind !== "candidates") return;
+    setView({ ...view, cuisines: browsePrev(view.cuisines) });
   }
 
   function choose(cuisine: Cuisine) {
@@ -383,7 +406,7 @@ export default function Home() {
       // 결과 화면에서 기준 위치 줄이 사라지고 후보로 돌아갈 수도 없다.
       anchor: view.anchor,
       result: view.result,
-      candidates: view.candidates,
+      cuisines: view.cuisines,
       cuisine,
       all,
       pool,
@@ -396,11 +419,11 @@ export default function Home() {
 
   function decideForMe() {
     if (view.kind !== "candidates") return;
-    const chosen = pickOne(view.candidates, Math.random);
+    const chosen = pickOne(currentPage(view.cuisines), Math.random);
     if (chosen === undefined) {
       // 후보 화면은 종류가 하나 이상일 때만 뜨므로 여기 닿으면 안 된다.
       // 닿았다면 버튼이 조용히 아무 일도 안 한 것처럼 보이므로 흔적을 남긴다.
-      console.error("[decideForMe] 후보가 비어 있습니다", view.candidates);
+      console.error("[decideForMe] 후보가 비어 있습니다", view.cuisines);
       return;
     }
     choose(chosen);
@@ -418,7 +441,7 @@ export default function Home() {
       kind: "candidates",
       anchor: view.anchor,
       result: view.result,
-      candidates: view.candidates,
+      cuisines: view.cuisines,
     });
   }
 
@@ -596,8 +619,16 @@ export default function Home() {
           onChangeWhere={() =>
             setView({ kind: "search", initialKeyword: "", returnTo: view })
           }
-          candidates={view.candidates}
+          candidates={currentPage(view.cuisines)}
           onChoose={choose}
+          canPrev={canGoBack(view.cuisines)}
+          onPrev={prevCandidates}
+          // 가까운 종류가 넷 이하면 넘길 곳이 없어 다시 뽑아도 같은 넷이다.
+          canReshuffle={canGoForward(
+            view.cuisines,
+            distinctById(view.result.cuisines),
+            CANDIDATE_COUNT,
+          )}
           onReshuffle={reshuffle}
           onDecideForMe={decideForMe}
         />
