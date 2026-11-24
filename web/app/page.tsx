@@ -40,7 +40,7 @@ import {
 } from "@/lib/install";
 import { getCurrentPosition, GeoError } from "@/lib/geo";
 import { pickOne } from "@/lib/pick";
-import { pickPlaces, WINDOW_STEP } from "@/lib/places";
+import { nextPlaces, type PlaceBrowse, startPlaces } from "@/lib/places";
 import { DEFAULT_RADIUS, WIDER_RADIUS } from "@/lib/radius";
 import { avoidNotice, canRestore } from "@/lib/reasons";
 import { resolveAnchor, type Spot } from "@/lib/spots";
@@ -130,15 +130,16 @@ type View =
       all: Place[];
       /**
        * 회피를 적용한 뒤 남은 가게. 뽑기의 바탕이다.
-       * places와 나눠 들고 다니는 이유: "다른 가게 보기"는 이 목록에서 다시 뽑는데,
+       * placeBrowse와 나눠 들고 다니는 이유: "다른 가게 보기"는 이 목록에서 다시 뽑는데,
        * 누를 때마다 목록을 새로 걸러 만들면 같은 가게라도 다른 객체가 되어
-       * 직전 목록을 피하는 판정이 통하지 않는다(web/lib/places.ts에 까닭을 적어 두었다).
+       * 이미 본 가게를 알아보는 판정이 통하지 않는다(web/lib/places.ts에 까닭을 적어 두었다).
        */
       pool: Place[];
-      /** 지금 화면에 보이는 가게. */
-      places: Place[];
-      /** 지금 창 크기. "다른 가게 보기"가 WINDOW_STEP씩 키운다. */
-      windowSize: number;
+      /**
+       * 넘겨 본 가게 묶음의 기록과 지금 창 크기. 지금 보이는 가게는
+       * currentPage(placeBrowse.browse)다. 창은 새 묶음을 뽑을 때만 WINDOW_STEP씩 넓어진다.
+       */
+      placeBrowse: PlaceBrowse;
       /** 회피가 몇 곳을 뺐는지. released와 반드시 함께 읽는다(web/lib/avoid.ts). */
       removed: number;
       /** 전부 빠져 이번만 회피를 풀었는지. */
@@ -410,8 +411,7 @@ export default function Home() {
       cuisine,
       all,
       pool,
-      places: pickPlaces(pool, PLACE_COUNT, [], Math.random, WINDOW_STEP),
-      windowSize: WINDOW_STEP,
+      placeBrowse: startPlaces(pool, PLACE_COUNT, Math.random),
       removed,
       released,
     });
@@ -447,13 +447,21 @@ export default function Home() {
 
   function reshufflePlaces() {
     if (view.kind !== "result") return;
-    // 창을 한 단계 넓힌다. 넓히지 않으면 가까운 여덟 곳 안에서만 계속 돌아,
-    // 그 여덟 곳을 다 본 뒤로는 눌러도 더 먼 가게가 영영 나오지 않는다.
-    const windowSize = view.windowSize + WINDOW_STEP;
+    // 새 묶음을 뽑을 때는 창을 한 단계 넓힌다(nextPlaces). 넓히지 않으면 가까운 여덟 곳
+    // 안에서만 계속 돌아, 그 여덟 곳을 다 본 뒤로는 눌러도 더 먼 가게가 영영 나오지 않는다.
+    // 참조 비교 계약: view.pool은 choose·toggleAvoid가 만든 배열 그대로 넘긴다.
     setView({
       ...view,
-      windowSize,
-      places: pickPlaces(view.pool, PLACE_COUNT, view.places, Math.random, windowSize),
+      placeBrowse: nextPlaces(view.placeBrowse, view.pool, PLACE_COUNT, Math.random),
+    });
+  }
+
+  function prevPlaces() {
+    if (view.kind !== "result") return;
+    // 창 크기는 그대로 둔다. 이미 본 묶음으로 돌아갈 뿐 새로 뽑지 않기 때문이다.
+    setView({
+      ...view,
+      placeBrowse: { ...view.placeBrowse, browse: browsePrev(view.placeBrowse.browse) },
     });
   }
 
@@ -510,14 +518,16 @@ export default function Home() {
     //
     // **바탕은 view.pool이 아니라 view.all이다.** pool은 이미 걸러진 목록이라,
     // 그것을 바탕으로 쓰면 회피를 꺼도 빠졌던 가게가 돌아오지 않는다.
+    //
+    // 가게 기록은 처음부터 다시 시작한다. 바뀐 pool에는 앞서 본 묶음의 가게가 없을 수 있어
+    // 기록을 이어 가면 `이전 가게`가 지금 목록에 없는 가게를 보여 주게 된다.
     const { places: pool, removed, released } = avoidVisited(view.all, visits, next);
     setView({
       ...view,
       pool,
       removed,
       released,
-      windowSize: WINDOW_STEP,
-      places: pickPlaces(pool, PLACE_COUNT, [], Math.random, WINDOW_STEP),
+      placeBrowse: startPlaces(pool, PLACE_COUNT, Math.random),
     });
   }
 
@@ -644,7 +654,7 @@ export default function Home() {
           }
           onBackToCandidates={backToCandidates}
           cuisine={view.cuisine.label}
-          places={view.places}
+          places={currentPage(view.placeBrowse.browse)}
           total={view.pool.length}
           // removed만 보고 판단하지 않는다. 전부 빠져 이번만 푼 회차는 removed가 0으로
           // 오는데(관례다) 실제로는 뺄 것이 있었으므로, released를 먼저 보는
@@ -661,6 +671,8 @@ export default function Home() {
           onDismissInstall={dismissInstall}
           decidedIds={visits.map((visit) => visit.placeId)}
           onShowVisits={() => setView({ kind: "visits" })}
+          canPrev={canGoBack(view.placeBrowse.browse)}
+          onPrev={prevPlaces}
           onReshuffle={reshufflePlaces}
           onRestart={() => setView({ kind: "start" })}
         />

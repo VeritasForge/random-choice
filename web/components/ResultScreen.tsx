@@ -9,7 +9,7 @@ import PlaceSheet, { type SheetPlace } from "./PlaceSheet";
 
 type Props = {
   cuisine: string;
-  places: Place[];
+  places: readonly Place[];
   total: number;
   /** 회피가 무엇을 했는지 알리는 한 줄. null이면 줄 자체를 그리지 않는다(web/lib/reasons.ts). */
   notice: string | null;
@@ -29,6 +29,9 @@ type Props = {
   onDecide: (place: Place) => void;
   /** 이미 기록해 둔 장소 ID. 여기 있는 가게에는 버튼 대신 "정하신 곳"을 그린다. */
   decidedIds: readonly string[];
+  /** 앞서 본 가게 묶음이 있는가. 없으면 `이전 가게`는 눌러도 아무 일도 안 한다. */
+  canPrev: boolean;
+  onPrev: () => void;
   onReshuffle: () => void;
   onRestart: () => void;
   /** 기록 화면으로 간다. 방금 정한 뒤의 마무리 상자가 부른다. */
@@ -216,6 +219,8 @@ export default function ResultScreen({
   onToggleAvoid,
   onDecide,
   decidedIds,
+  canPrev,
+  onPrev,
   onReshuffle,
   onRestart,
   onShowVisits,
@@ -416,7 +421,7 @@ export default function ResultScreen({
 
         {/*
           눈에는 보이지 않고 화면 낭독기만 읽는 영역. 후보 화면과 같은 까닭이다 —
-          "다른 가게 보기"는 화면 이름을 바꾸지 않아 포커스가 움직이지 않으므로,
+          "다른 가게 보기"·"이전 가게"는 화면 이름을 바꾸지 않아 포커스가 움직이지 않으므로,
           이것이 없으면 낭독기 사용자는 버튼을 누르고도 목록이 바뀌었는지 알 수 없다.
           "다시 넣기"도 같은 화면 안에서 목록만 바꾸므로 여기에 기댄다.
         */}
@@ -429,12 +434,28 @@ export default function ResultScreen({
         {/*
           보여주지 못하고 남은 가게가 있을 때만 버튼을 둔다. 걸러진 것을 이미 전부
           보여주고 있는데 버튼을 두면, 눌러도 같은 목록이 그대로 남아
-          이 화면이 고쳐 놓은 바로 그 인상을 다시 준다.
+          이 화면이 고쳐 놓은 바로 그 인상을 다시 준다. `이전 가게`도 같은 조건으로만
+          붙인다 — 넘길 곳이 없으면 돌아갈 곳도 없다.
+
+          누를 수 없을 때 disabled가 아니라 aria-disabled를 쓰는 까닭은 CandidateScreen의
+          `이전 후보`와 같다(DESIGN.md Disabled). 클릭은 여기서 무시한다.
         */}
         {places.length < total ? (
-          <button type="button" onClick={onReshuffle} className="btn btn-quiet w-full">
-            다른 가게 보기
-          </button>
+          <div className="grid grid-cols-2 gap-3">
+            <button
+              type="button"
+              aria-disabled={!canPrev}
+              onClick={() => {
+                if (canPrev) onPrev();
+              }}
+              className="btn btn-quiet"
+            >
+              이전 가게
+            </button>
+            <button type="button" onClick={onReshuffle} className="btn btn-quiet">
+              다른 가게 보기
+            </button>
+          </div>
         ) : null}
         <button type="button" onClick={onBackToCandidates} className="btn btn-quiet w-full">
           다른 종류 고르기
