@@ -298,7 +298,7 @@ cd ../web && npm run build && npm test && npx tsc --noEmit && npm run lint
 
 | | 주소 | Vercel 프로젝트 |
 |---|---|---|
-| 화면 | https://random-choice-gamma.vercel.app | `random-choice` |
+| 화면 | https://todaybap.vercel.app | `random-choice` |
 | 서버 | https://api-beryl-chi-94.vercel.app | `api` |
 
 둘 다 서울에서 돕니다. 이 서버는 요청마다 카카오를 실시간으로 부르는데(응답을 저장하는

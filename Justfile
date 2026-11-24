@@ -99,7 +99,7 @@ deploy: check deploy-api deploy-web
     # push해도 자동으로 배포되지 않는다(GitHub Actions를 쓰지 않는다). Vercel 계정에
     # GitHub 로그인 연결이 없어 그 경로 자체가 없다(README "다시 올릴 때" 참고). 그래서
     # 이 레시피로 손으로 올린다.
-    echo "배포 완료 — https://random-choice-gamma.vercel.app"
+    echo "배포 완료 — https://todaybap.vercel.app"
 
 # 접속 통계 화면(/stats)의 비밀번호를 바꾼다. 새 비밀번호를 묻고, 그냥 Enter를 치면 무작위로 만든다.
 stats-password:
@@ -119,8 +119,8 @@ stats-password:
     # 환경 변수는 새로 배포해야 적용된다. 내 컴퓨터의 코드를 올리는 대신 지금 실서비스에
     # 올라가 있는 배포를 그대로 다시 빌드한다. 그래야 비밀번호만 바뀌고, 아직 올릴
     # 생각이 없던 작업 중인 코드가 함께 올라가지 않는다.
-    vercel redeploy random-choice-gamma.vercel.app
+    vercel redeploy todaybap.vercel.app
     if [ -n "$generated" ]; then
       echo "새 비밀번호: $pw"
     fi
-    echo "비밀번호를 바꿨습니다 — https://random-choice-gamma.vercel.app/stats"
+    echo "비밀번호를 바꿨습니다 — https://todaybap.vercel.app/stats"
