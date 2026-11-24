@@ -10,12 +10,12 @@ import type { Cuisine } from "./api";
  * 같은 id가 둘 이상이면 나중 것이 남는다 — Map.set이 같은 키를 덮어쓰기 때문이다.
  *
  * 원소를 복사하지 않고 받은 객체를 그대로 돌려주는 것이 반드시 지켜야 할 계약이다.
- * web/lib/pick.ts의 pickAvoiding은 직전 후보(avoid)를 `new Set(avoid)`에 담고
- * `.has(item)`으로 겹침을 판정하는데, 이 비교는 값이 아니라 참조로 이뤄진다.
- * 이 함수가 `{...cuisine}`처럼 사본을 돌려주기 시작하면, "다시 뽑기"가 넘기는
- * 직전 후보와 다음 호출이 새로 만드는 종류 목록이 값은 같아도 서로 다른 객체가 되어
- * avoid의 Set에 아무것도 걸리지 않는다. 그러면 "다시 뽑기"를 눌러도 매번 같은
- * 후보만 나오는데, 오류도 경고도 없어 사용자도 개발자도 원인을 알아채기 어렵다.
+ * web/lib/browse.ts는 이미 본 종류를 `seen` Set에 담고 `.has(item)`으로 걸러내는데
+ * (한 바퀴가 끝나는 경계에서만 pickAvoiding이 직전 후보를 같은 방식으로 피한다),
+ * 이 비교는 값이 아니라 참조로 이뤄진다. 이 함수가 `{...cuisine}`처럼 사본을
+ * 돌려주기 시작하면, 이미 본 종류와 다음 호출이 새로 만드는 종류 목록이 값은 같아도
+ * 서로 다른 객체가 되어 seen에 아무것도 걸리지 않는다. 그러면 한 바퀴 안에서
+ * 이미 본 종류가 다시 나오는데, 오류도 경고도 없어 사용자도 개발자도 원인을 알아채기 어렵다.
  */
 export function distinctById(cuisines: readonly Cuisine[]): Cuisine[] {
   return [...new Map(cuisines.map((cuisine) => [cuisine.id, cuisine])).values()];

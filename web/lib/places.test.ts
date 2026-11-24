@@ -234,6 +234,19 @@ describe("nextPlaces", () => {
     }
   });
 
+  it("둘째 묶음도 넓힌 가까운 순 창(가까운 열여섯 곳) 안에서 뽑는다", () => {
+    // pool 전체에서 뽑게 바뀌면 먼 가게가 섞여 실패한다. 입력은 먼 것부터 둔다.
+    for (let seed = 0; seed < 20; seed += 1) {
+      const pool = makePool(30).reverse();
+      const rng = makeRng(seed);
+      const first = startPlaces(pool, 4, rng);
+      const second = nextPlaces(first, pool, 4, rng);
+      for (const found of currentPage(second.browse)) {
+        expect(found.distance).toBeLessThanOrEqual(10 + 15 * 10);
+      }
+    }
+  });
+
   it("pool의 객체를 그대로 담는다", () => {
     const pool = makePool(30);
     const rng = makeRng(11);

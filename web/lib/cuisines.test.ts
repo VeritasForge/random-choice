@@ -13,11 +13,12 @@ describe("distinctById", () => {
     const result = distinctById(list);
 
     // toEqual(값 비교)이 아니라 toBe(참조 비교)를 쓰는 이유가 이 시험의 핵심이다.
-    // web/lib/pick.ts의 pickAvoiding은 직전 후보를 `new Set(avoid).has(item)`으로
-    // 걸러내는데, 이 비교가 참조로 이뤄진다. distinctById가 `{...cuisine}`처럼
+    // web/lib/browse.ts는 이미 본 종류를 `seen` Set의 `.has(item)`으로 걸러내는데
+    // (한 바퀴 경계에서만 pickAvoiding이 같은 방식으로 직전 후보를 피한다),
+    // 이 비교가 참조로 이뤄진다. distinctById가 `{...cuisine}`처럼
     // 사본을 돌려주도록 "정리"되면 이 시험만 실패하고 값 비교 시험은 계속 통과한다 —
     // 그래서 여기서 값 비교로 완화하면 안 되고, 실패했다면 사본을 만들지 않도록
-    // 되돌려야 한다. 그러지 않으면 "다시 뽑기"가 매번 같은 후보만 내놓는데도
+    // 되돌려야 한다. 그러지 않으면 한 바퀴 안에서 이미 본 종류가 다시 나오는데도
     // 화면에도 콘솔에도 아무 흔적이 남지 않는다.
     expect(result[0]).toBe(list[0]);
   });
