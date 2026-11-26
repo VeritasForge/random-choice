@@ -55,7 +55,12 @@ export default async function SharedPage(props: PageProps<"/s/[placeNo]">) {
 
   return (
     <main className="mx-auto flex h-dvh w-full max-w-md flex-col gap-4 p-6 pb-[max(1.5rem,env(safe-area-inset-bottom))]">
-      <header className="flex flex-col items-center gap-1 text-center">
+      {/*
+        머리글을 종이색 판 위에 올린다. 서비스 이름과 `오늘은`은 흐린 글자(text-muted)라
+        나뭇결 위에 곧바로 놓으면 밝은 화면에서 대비가 4.02:1로 본문 하한 4.5:1에 못 미친다
+        (DESIGN.md의 The Text On Paper Rule). 종이 위에서는 5.46:1이다.
+      */}
+      <header className="flex flex-col items-center gap-1 rounded-xl border border-line bg-background px-4 py-3 text-center">
         <p className="text-base text-muted">{SITE_NAME}</p>
         {share.cuisineLabel !== null ? (
           <h1 className="flex flex-col items-center gap-1 text-3xl font-semibold text-balance break-keep">
