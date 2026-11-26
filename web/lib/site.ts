@@ -77,3 +77,32 @@ export function siteMetadata(env: Env = process.env): Metadata {
     verification: verification(env),
   };
 }
+
+/**
+ * 공유 화면(/s/장소번호)의 <head> 정보. path는 그 화면 자신의 경로다.
+ *
+ * openGraph의 항목을 전부 다시 적는 이유: Next.js는 화면이 openGraph를 내면 위쪽(layout.tsx)의
+ * openGraph를 항목별로 합치지 않고 통째로 갈아 끼운다. 여기서 빠뜨린 항목은 물려받지 않고
+ * 사라진다. metadataBase·twitter·verification은 적지 않았으므로 위쪽 것을 그대로 물려받는다.
+ *
+ * 제목에 서비스 이름을 잇지 않는다. 이으면 "오늘은 돈까스·우동 | 오늘은 뭐 먹지?"처럼
+ * "오늘은"이 두 번 나온다. 서비스 이름은 siteName으로만 나간다.
+ *
+ * 검색에서 빼는 이유: 주소의 조합이 끝없이 많고, 내용은 끼워 넣은 카카오 페이지다.
+ */
+export function shareMetadata(title: string, path: string): Metadata {
+  return {
+    title,
+    description: SITE_DESCRIPTION,
+    alternates: { canonical: path },
+    openGraph: {
+      type: "website",
+      url: path,
+      siteName: SITE_NAME,
+      title,
+      description: SITE_DESCRIPTION,
+      locale: "ko_KR",
+    },
+    robots: { index: false, follow: false },
+  };
+}

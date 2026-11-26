@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { SITE_DESCRIPTION, SITE_NAME, siteMetadata, siteUrl } from "./site";
+import { SITE_DESCRIPTION, SITE_NAME, shareMetadata, siteMetadata, siteUrl } from "./site";
 
 describe("정식 주소", () => {
   it("SITE_URL을 그대로 쓴다", () => {
@@ -61,5 +61,29 @@ describe("head 정보", () => {
     expect(siteMetadata({ NAVER_SITE_VERIFICATION: "n1" }).verification).toEqual({
       other: { "naver-site-verification": "n1" },
     });
+  });
+});
+
+describe("공유 화면의 머리 정보", () => {
+  const meta = shareMetadata("오늘은 돈까스·우동", "/s/123?c=donkatsu");
+  it("제목은 받은 글자 그대로이고 서비스 이름을 붙이지 않는다", () => {
+    expect(meta.title).toBe("오늘은 돈까스·우동");
+    expect(meta.openGraph?.title).toBe("오늘은 돈까스·우동");
+  });
+  it("대표 주소와 미리보기 주소는 이 화면의 주소다", () => {
+    expect(meta.alternates?.canonical).toBe("/s/123?c=donkatsu");
+    expect(meta.openGraph?.url).toBe("/s/123?c=donkatsu");
+  });
+  it("서비스 이름과 설명은 사이트 공통 값을 쓴다", () => {
+    expect(meta.openGraph).toMatchObject({
+      type: "website",
+      siteName: SITE_NAME,
+      description: SITE_DESCRIPTION,
+      locale: "ko_KR",
+    });
+    expect(meta.description).toBe(SITE_DESCRIPTION);
+  });
+  it("검색엔진 수집에서 뺀다", () => {
+    expect(meta.robots).toEqual({ index: false, follow: false });
   });
 });
