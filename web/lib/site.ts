@@ -102,6 +102,19 @@ export function shareMetadata(title: string, path: string): Metadata {
       title,
       description: SITE_DESCRIPTION,
       locale: "ko_KR",
+      // 시작 화면에서는 app/opengraph-image.png를 Next.js가 스스로 넣지만, 그 그림은 그 파일이
+      // 놓인 층의 openGraph에 실려 오는 것이라 여기서 openGraph를 갈아 끼우면 함께 사라진다
+      // (2026-11-27 빌드 결과로 확인: 적지 않으면 og:image가 나가지 않는다). 그래서 같은 그림을
+      // 직접 가리킨다. 크기는 그 파일의 실제 크기이고, 설명 글은 app/opengraph-image.alt.txt와
+      // 같아야 한다(site.test.ts가 대조한다).
+      images: [
+        {
+          url: "/opengraph-image.png",
+          width: 1200,
+          height: 630,
+          alt: "오늘은 뭐 먹지? 웃는 얼굴의 밥그릇 그림",
+        },
+      ],
     },
     robots: { index: false, follow: false },
   };

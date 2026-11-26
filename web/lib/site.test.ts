@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { SITE_DESCRIPTION, SITE_NAME, shareMetadata, siteMetadata, siteUrl } from "./site";
 
@@ -85,5 +87,16 @@ describe("공유 화면의 머리 정보", () => {
   });
   it("검색엔진 수집에서 뺀다", () => {
     expect(meta.robots).toEqual({ index: false, follow: false });
+  });
+  it("미리보기 그림은 사이트 공통 그림이고, 설명 글은 그림 옆의 글 파일과 같다", () => {
+    // openGraph를 직접 내면 app/opengraph-image.png가 저절로 붙지 않는다(빌드 결과로 확인).
+    // 설명 글을 두 곳에 적게 되므로 어긋나지 않는지 여기서 본다.
+    const alt = readFileSync(
+      fileURLToPath(new URL("../app/opengraph-image.alt.txt", import.meta.url)),
+      "utf8",
+    ).trim();
+    expect(meta.openGraph?.images).toEqual([
+      { url: "/opengraph-image.png", width: 1200, height: 630, alt },
+    ]);
   });
 });
