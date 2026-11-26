@@ -112,6 +112,58 @@ export function shareText(cuisineLabel: string, placeName: string): string {
   return `오늘은 ${cuisineLabel}, ${placeName} 어때요?`;
 }
 
+/**
+ * `보내기`를 누른 결과.
+ * - shared: 휴대폰의 공유 창으로 넘겼다.
+ * - cancelled: 사용자가 공유 창을 그냥 닫았다. 오류가 아니다.
+ * - copied: 공유 창을 쓸 수 없어 글과 주소를 복사했다.
+ * - failed: 복사도 하지 못했다. 화면이 주소를 글자로 보여 줘야 한다.
+ */
+export type ShareOutcome = "shared" | "cancelled" | "copied" | "failed";
+
+/**
+ * 브라우저가 해 주는 두 가지 일. 없는 것은 비워 둔다.
+ * 인자로 받는 이유는 시험이 브라우저 없이 가짜를 넣을 수 있게 하려는 것이다.
+ */
+export type ShareDeps = {
+  share?: (data: { text: string; url: string }) => Promise<void>;
+  copy?: (text: string) => Promise<void>;
+};
+
+/**
+ * 공유 창을 열고, 열 수 없으면 복사한다.
+ *
+ * 닫은 것과 실패한 것을 가르는 이유: 닫은 것은 사용자가 보내지 않기로 한 것이라 아무 일도
+ * 하지 않는 것이 맞다. 그때 복사까지 하면 취소한 사람에게 "복사했어요"가 뜬다. 반대로 공유 창이
+ * 있는데 브라우저가 받아 주지 않은 경우(다른 앱 안의 화면에서 그럴 수 있다)에 아무 일도 하지
+ * 않으면 버튼이 고장 난 것으로 보인다. 그래서 그때는 복사로 넘어간다.
+ */
+export async function sendShare(
+  text: string,
+  url: string,
+  deps: ShareDeps,
+): Promise<ShareOutcome> {
+  if (deps.share !== undefined) {
+    try {
+      await deps.share({ text, url });
+      return "shared";
+    } catch (cause) {
+      if (cause instanceof Error && cause.name === "AbortError") {
+        return "cancelled";
+      }
+    }
+  }
+  if (deps.copy === undefined) {
+    return "failed";
+  }
+  try {
+    await deps.copy(`${text}\n${url}`);
+    return "copied";
+  } catch {
+    return "failed";
+  }
+}
+
 /** 공유 화면의 제목. 브라우저 탭과 링크 미리보기가 함께 쓴다. */
 export function shareTitle(cuisineLabel: string | null): string {
   return cuisineLabel === null ? "오늘 점심, 여기 어때요?" : `오늘은 ${cuisineLabel}`;

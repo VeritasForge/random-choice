@@ -654,6 +654,7 @@ export default function Home() {
           }
           onBackToCandidates={backToCandidates}
           cuisine={view.cuisine.label}
+          cuisineId={view.cuisine.id}
           places={currentPage(view.placeBrowse.browse)}
           total={view.pool.length}
           // removed만 보고 판단하지 않는다. 전부 빠져 이번만 푼 회차는 removed가 0으로

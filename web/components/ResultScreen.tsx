@@ -2,13 +2,17 @@ import { useEffect, useRef, useState } from "react";
 import type { Place } from "@/lib/api";
 import { isOfferKind, type InstallKind } from "@/lib/install";
 import { distanceLabel } from "@/lib/reasons";
+import { placeNumber, sharePath, shareText } from "@/lib/share";
 import { isPlainClick } from "@/lib/sheet";
 import { kakaoPlaceUrl, RETENTION_DAYS } from "@/lib/visits";
 import InstallGuide from "./InstallGuide";
 import PlaceSheet, { type SheetPlace } from "./PlaceSheet";
+import ShareButton from "./ShareButton";
 
 type Props = {
   cuisine: string;
+  /** 고른 종류의 식별자. 화면에는 그리지 않고 `보내기`의 링크에만 담는다. */
+  cuisineId: string;
   places: readonly Place[];
   total: number;
   /** 회피가 무엇을 했는지 알리는 한 줄. null이면 줄 자체를 그리지 않는다(web/lib/reasons.ts). */
@@ -211,6 +215,7 @@ function DecideControl({
 
 export default function ResultScreen({
   cuisine,
+  cuisineId,
   places,
   total,
   notice,
@@ -238,7 +243,11 @@ export default function ResultScreen({
   // 화면 낭독기는 아무 말도 하지 않는다 — 이 화면의 통지 영역은 목록의 이름들을
   // 읽는 것이라 기록해도 내용이 바뀌지 않기 때문이다.
   // 포커스를 옮기면 낭독기가 새 초점인 "정하신 곳"을 읽어 주어 둘이 한 번에 닫힌다.
-  const [justDecidedId, setJustDecidedId] = useState<string | null>(null);
+  // 식별자만이 아니라 가게를 통째로 들고 있는 이유: `보내기`가 그 가게의 이름과 주소를 쓴다.
+  // 정한 뒤 `다른 가게 보기`로 목록이 바뀌어도 방금 정한 가게를 보낼 수 있어야 하므로
+  // 지금 목록(places)에서 다시 찾지 않는다.
+  const [justDecided, setJustDecided] = useState<Place | null>(null);
+  const justDecidedId = justDecided?.id ?? null;
   const markRef = useRef<HTMLSpanElement>(null);
   // 가게 창에 띄운 가게. null이면 창이 닫혀 있다.
   const [sheet, setSheet] = useState<SheetPlace | null>(null);
@@ -254,7 +263,7 @@ export default function ResultScreen({
 
   function decide(place: Place) {
     onDecide(place);
-    setJustDecidedId(place.id);
+    setJustDecided(place);
   }
 
   // 방금 정한 것이 실제로 기록되었을 때만 마무리를 그린다. 저장소가 막혀 기록이 안 되면
@@ -262,9 +271,24 @@ export default function ResultScreen({
   // 렌더 중에 계산하고 상태로 두지 않는다.
   const closed = justDecidedId !== null && decidedIds.includes(justDecidedId);
 
+  // 방금 정한 가게의 카카오 장소 번호. 가게 페이지 주소가 비었거나 다른 꼴이면 null이고,
+  // 그때는 열리는 링크를 만들 수 없어 `보내기`를 그리지 않는다.
+  const sharedPlaceNo = justDecided === null ? null : placeNumber(justDecided.placeUrl);
+
   // 홈 화면 추가 안내 상자를 그릴지. 조건의 까닭은 아래 상자 자리의 주석에 적었다.
   const offersInstall = closed && isOfferKind(installKind) && !installDismissed;
   const visitsButtonRef = useRef<HTMLButtonElement>(null);
+  // `보내기`가 있으면 그 옆에, 없으면 혼자 선다. 두 자리에 같은 버튼을 두려고 따로 뺐다.
+  const visitsButton = (
+    <button
+      ref={visitsButtonRef}
+      type="button"
+      onClick={onShowVisits}
+      className="btn btn-quiet btn-sm"
+    >
+      기록 보기
+    </button>
+  );
   const offeredInstall = useRef(false);
 
   // 안내 상자가 사라지면 초점을 바로 위 "기록 보기"로 옮긴다. 상자는 그 안의 `✕`나
@@ -390,14 +414,21 @@ export default function ResultScreen({
             <p className="text-base leading-relaxed text-muted">
               정하신 곳은 {RETENTION_DAYS}일 동안 기록에 남아요
             </p>
-            <button
-              ref={visitsButtonRef}
-              type="button"
-              onClick={onShowVisits}
-              className="btn btn-quiet btn-sm"
-            >
-              기록 보기
-            </button>
+            {/*
+              `보내기`를 이 자리에 두는 까닭: 점심은 대개 여럿이 먹고, 방금 정한 순간이
+              "여기 어때요"를 보내기에 가장 자연스럽다. 받은 사람은 링크로 이 서비스의
+              공유 화면(app/s/[placeNo])에 온다. 링크와 글의 규칙은 lib/share.ts에 있다.
+            */}
+            {justDecided !== null && sharedPlaceNo !== null ? (
+              <ShareButton
+                text={shareText(cuisine, justDecided.name)}
+                path={sharePath(sharedPlaceNo, cuisineId)}
+              >
+                {visitsButton}
+              </ShareButton>
+            ) : (
+              visitsButton
+            )}
           </div>
         ) : null}
 

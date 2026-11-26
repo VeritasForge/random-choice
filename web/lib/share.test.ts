@@ -1,11 +1,12 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   CUISINE_LABELS,
   cuisineLabel,
   parseShare,
   placeNumber,
+  sendShare,
   sharePath,
   shareText,
   shareTitle,
@@ -108,5 +109,46 @@ describe("글", () => {
   it("제목은 종류를 알 때와 모를 때가 다르다", () => {
     expect(shareTitle("돈까스·우동")).toBe("오늘은 돈까스·우동");
     expect(shareTitle(null)).toBe("오늘 점심, 여기 어때요?");
+  });
+});
+
+describe("보내기", () => {
+  const text = "오늘은 분식, 가게 어때요?";
+  const url = "https://a.example/s/1?c=bunsik";
+  // 브라우저는 사용자가 공유 창을 닫으면 이름이 AbortError인 오류로 알린다.
+  const abort = () => Object.assign(new Error("닫음"), { name: "AbortError" });
+
+  it("공유 창이 있으면 글과 주소를 넘긴다", async () => {
+    const share = vi.fn().mockResolvedValue(undefined);
+    const copy = vi.fn();
+    expect(await sendShare(text, url, { share, copy })).toBe("shared");
+    expect(share).toHaveBeenCalledWith({ text, url });
+    expect(copy).not.toHaveBeenCalled();
+  });
+
+  it("닫으면 아무것도 하지 않는다", async () => {
+    const copy = vi.fn();
+    const share = () => Promise.reject(abort());
+    expect(await sendShare(text, url, { share, copy })).toBe("cancelled");
+    expect(copy).not.toHaveBeenCalled();
+  });
+
+  it("공유가 거절되면 복사한다", async () => {
+    const copy = vi.fn().mockResolvedValue(undefined);
+    const share = () => Promise.reject(new Error("NotAllowed"));
+    expect(await sendShare(text, url, { share, copy })).toBe("copied");
+    expect(copy).toHaveBeenCalledWith(`${text}\n${url}`);
+  });
+
+  it("공유 창이 없으면 글과 주소를 한 줄씩 복사한다", async () => {
+    const copy = vi.fn().mockResolvedValue(undefined);
+    expect(await sendShare(text, url, { copy })).toBe("copied");
+    expect(copy).toHaveBeenCalledWith(`${text}\n${url}`);
+  });
+
+  it("복사도 안 되면 failed다", async () => {
+    const copy = () => Promise.reject(new Error("x"));
+    expect(await sendShare(text, url, { copy })).toBe("failed");
+    expect(await sendShare(text, url, {})).toBe("failed");
   });
 });
