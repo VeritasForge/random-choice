@@ -24,3 +24,8 @@ npm-debug.log*
 
 # 브레인스토밍 도구가 목업 화면을 남기는 폴더
 .superpowers/
+
+# 아래 두 줄은 저장소 맨 위에서 vercel link를 돌리면 Vercel CLI가 스스로 덧붙인다.
+# 지우면 just deploy를 돌릴 때마다 다시 생기므로 그대로 둔다.
+.vercel
+.env*

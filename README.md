@@ -358,21 +358,34 @@ Go 서버는 도커 파일 없이 Vercel의 Go 방식으로 그대로 올라갑�
 
 ### 다시 올릴 때
 
-**push해도 자동으로 배포되지 않습니다.** GitHub Actions를 쓰지 않습니다 — Vercel
-계정에 GitHub 로그인 연결이 없어서 저장소와 이어 두지 못했습니다. 그래서 `just deploy`
-한 줄로 손으로 올립니다.
+**`main`에 push하면 자동으로 배포됩니다.** 두 Vercel 프로젝트가 이 GitHub 저장소와
+이어져 있어서, `main`에 커밋이 올라오면 Vercel이 서버와 화면을 각각 빌드해 실서비스에
+올립니다. 다른 브랜치에 push하면 실서비스는 그대로 두고 미리보기 주소만 만듭니다.
+GitHub Actions는 쓰지 않습니다.
+
+저장소 하나에 두 프로젝트가 들어 있으므로, 각 프로젝트가 어느 폴더를 빌드할지를 Vercel
+설정(Root Directory)에 적어 두었습니다 — `random-choice`는 `web`, `api`는 `api`입니다.
+
+자동 배포는 두 가지를 보장하지 않습니다. 커밋 전 전체 검증(`just check`)을 돌리지
+않고, 서버와 화면을 순서 없이 동시에 올립니다. 이 둘이 필요한 변경은 push하기 전에
+손으로 올립니다.
 
 ```bash
 just deploy
 ```
 
 커밋 전 전체 검증(`just check`)을 먼저 돌리고, 통과해야 서버 → 화면 순서로 올립니다.
-아래는 그 안에서 실제로 도는 명령입니다.
+아래는 그 안에서 실제로 도는 명령입니다. 폴더 안이 아니라 저장소 맨 위에서 돌립니다 —
+Vercel이 위 설정대로 `api`·`web` 폴더를 스스로 찾아 들어가므로, 폴더 안에서 올리면 그
+안에서 같은 이름의 폴더를 다시 찾다가 실패합니다.
 
 ```bash
-cd api && vercel deploy --prod --yes --archive=tgz    # 서버를 고쳤을 때
-cd web && vercel deploy --prod --yes --archive=tgz    # 화면을 고쳤을 때
+vercel link --yes --project api && vercel deploy --prod --yes --archive=tgz             # 서버를 고쳤을 때
+vercel link --yes --project random-choice && vercel deploy --prod --yes --archive=tgz   # 화면을 고쳤을 때
 ```
+
+맨 위에서 올리면 저장소 전체가 Vercel로 올라가므로, 비밀 값(`.env`)과 커밋하지 않는
+작업 폴더는 맨 위의 `.vercelignore`가 걸러 냅니다.
 
 한쪽만 다시 올리려면 `just deploy-api` 또는 `just deploy-web`을 씁니다(둘 다 검증을
 건너뜁니다 — 검증까지 원하면 `just check`를 먼저 따로 부르세요).
